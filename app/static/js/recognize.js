@@ -147,6 +147,8 @@ function updateLivenessBadge(verified) {
     }
 }
 
+let lastDrawnFaces = [];
+
 async function detectLoop() {
     if (isDetecting || video.videoWidth === 0) {
         setTimeout(detectLoop, 50);
@@ -155,8 +157,11 @@ async function detectLoop() {
 
     isDetecting = true;
 
-    canvas.width = video.clientWidth;
-    canvas.height = video.clientHeight;
+    // Only resize canvas if dimensions actually changed (prevents canvas redraw flickering)
+    if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
+        canvas.width = video.clientWidth;
+        canvas.height = video.clientHeight;
+    }
 
     // Use optimized resolution (380px) for ultra-fast network roundtrip
     const targetWidth = 380;
@@ -183,7 +188,6 @@ async function detectLoop() {
         });
 
         const data = await res.json();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // Low-lighting fallback handling
         if (data.status === "low_light" || data.error === "low light") {
@@ -203,12 +207,22 @@ async function detectLoop() {
         }
 
         if (data.faces && data.faces.length > 0) {
-            stableFrames++;
+            lastDrawnFaces = data.faces;
             lastFaceSeen = Date.now();
+        }
 
+        // Graceful persistence buffer (prevents rapid box blinking if a single frame drops)
+        const facesToRender = (data.faces && data.faces.length > 0)
+            ? data.faces
+            : ((Date.now() - lastFaceSeen < 350) ? lastDrawnFaces : []);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (facesToRender.length > 0) {
+            stableFrames++;
             let newPrev = [];
 
-            data.faces.forEach((face, i) => {
+            facesToRender.forEach((face, i) => {
                 // Scale back from 380px processing space to displayed canvas coordinates
                 const coordScaleX = video.clientWidth / targetWidth;
                 const coordScaleY = video.clientHeight / targetHeight;
