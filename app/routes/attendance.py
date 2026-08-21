@@ -80,8 +80,8 @@ def recognize_with_box():
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = []
 
-        # Run heavy MTCNN detection periodically (every 8 frames) or when trackers list is empty
-        run_detection = (frame_count % 8 == 0) or (len(session_data["trackers"]) == 0)
+        # Run detection periodically (every 4 frames) or when trackers list is empty
+        run_detection = (frame_count % 4 == 0) or (len(session_data["trackers"]) == 0)
 
         if run_detection:
             boxes, probs = mtcnn.detect(rgb)

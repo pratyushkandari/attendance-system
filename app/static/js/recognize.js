@@ -37,9 +37,23 @@ navigator.mediaDevices.getUserMedia({
     resultEl.innerHTML = "❌ Camera access denied. Please allow permissions.";
 });
 
+/**
+ * Fast dynamic bounding box smoothing:
+ * Snaps instantly during rapid head movements (zero lag)
+ * Applies subtle smoothing only when nearly stationary.
+ */
 function smoothBox(prev, curr) {
     if (!prev) return curr;
-    const alpha = 0.70;
+    const dx = Math.abs(curr[0] - prev[0]);
+    const dy = Math.abs(curr[1] - prev[1]);
+    
+    // Rapid movement: snap immediately with zero lag
+    if (dx > 18 || dy > 18) {
+        return curr;
+    }
+    
+    // Subtle smoothing when holding still
+    const alpha = 0.35;
     return [
         prev[0] + (curr[0] - prev[0]) * alpha,
         prev[1] + (curr[1] - prev[1]) * alpha,
@@ -54,7 +68,6 @@ function smoothBox(prev, curr) {
 function analyzeEyeLiveness(tctx, box) {
     try {
         const [x, y, w, h] = box;
-        // Upper facial third region (eye band)
         const eyeY = Math.max(0, Math.round(y + h * 0.18));
         const eyeH = Math.max(10, Math.round(h * 0.28));
         const eyeX = Math.max(0, Math.round(x + w * 0.12));
@@ -77,19 +90,19 @@ function analyzeEyeLiveness(tctx, box) {
         const variance = (sumSq / count) - (mean * mean);
 
         eyeVarianceHistory.push(variance);
-        if (eyeVarianceHistory.length > 10) eyeVarianceHistory.shift();
+        if (eyeVarianceHistory.length > 8) eyeVarianceHistory.shift();
 
         if (eyeVarianceHistory.length >= 4) {
             const avgVar = eyeVarianceHistory.reduce((a, b) => a + b, 0) / eyeVarianceHistory.length;
             const currentVar = eyeVarianceHistory[eyeVarianceHistory.length - 1];
 
-            // Natural blink transition (contrast change during eyelid closure)
+            // Natural blink transition
             if (currentVar < avgVar * 0.88 && !isBlinkDip) {
                 isBlinkDip = true;
                 blinkStartTime = Date.now();
             } else if (isBlinkDip && currentVar >= avgVar * 0.92) {
                 const duration = Date.now() - blinkStartTime;
-                if (duration > 50 && duration < 1200) {
+                if (duration > 40 && duration < 1200) {
                     blinkCount++;
                     livenessVerified = true;
                     updateLivenessBadge(true);
@@ -98,7 +111,7 @@ function analyzeEyeLiveness(tctx, box) {
             }
         }
 
-        // Live presence verification after 3 consecutive stable recognitions
+        // Auto-verify after 3 continuous stable recognitions
         if (consecutiveRecognitionFrames >= 3) {
             livenessVerified = true;
             updateLivenessBadge(true);
@@ -122,7 +135,7 @@ function updateLivenessBadge(verified) {
 
 async function detectLoop() {
     if (isDetecting || video.videoWidth === 0) {
-        setTimeout(detectLoop, 150);
+        setTimeout(detectLoop, 50);
         return;
     }
 
@@ -131,13 +144,18 @@ async function detectLoop() {
     canvas.width = video.clientWidth;
     canvas.height = video.clientHeight;
 
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = video.videoWidth;
-    tempCanvas.height = video.videoHeight;
-    const tctx = tempCanvas.getContext("2d");
-    tctx.drawImage(video, 0, 0);
+    // Use optimized resolution (380px) for ultra-fast network roundtrip
+    const targetWidth = 380;
+    const scaleFactor = targetWidth / video.videoWidth;
+    const targetHeight = Math.round(video.videoHeight * scaleFactor);
 
-    const image = tempCanvas.toDataURL("image/jpeg", 0.85);
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = targetWidth;
+    tempCanvas.height = targetHeight;
+    const tctx = tempCanvas.getContext("2d");
+    tctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+
+    const image = tempCanvas.toDataURL("image/jpeg", 0.60);
 
     try {
         const res = await fetch("/recognize_with_box", {
@@ -160,29 +178,32 @@ async function detectLoop() {
             let newPrev = [];
 
             data.faces.forEach((face, i) => {
-                let box = smoothBox(prevBoxes[i], face.box);
+                // Scale back from 380px processing space to displayed canvas coordinates
+                const coordScaleX = video.clientWidth / targetWidth;
+                const coordScaleY = video.clientHeight / targetHeight;
+
+                const [rawX, rawY, rawW, rawH] = face.box;
+                const scaledBox = [
+                    rawX * coordScaleX,
+                    rawY * coordScaleY,
+                    rawW * coordScaleX,
+                    rawH * coordScaleY
+                ];
+
+                let box = smoothBox(prevBoxes[i], scaledBox);
                 newPrev.push(box);
 
-                // Increment consecutive recognition counter for high-confidence match
                 if (face.confidence >= 0.70) {
                     consecutiveRecognitionFrames++;
                 }
 
-                // Run eye liveness check on detected face
+                // Analyze eye liveness
                 analyzeEyeLiveness(tctx, face.box);
 
-                const [x, y, w, h] = box;
-                const scaleX = video.clientWidth / video.videoWidth;
-                const scaleY = video.clientHeight / video.videoHeight;
-
-                const drawX = Math.round(x * scaleX);
-                const drawY = Math.round(y * scaleY);
-                const drawW = Math.round(w * scaleX);
-                const drawH = Math.round(h * scaleY);
-
+                const [drawX, drawY, drawW, drawH] = box.map(Math.round);
                 const isMarked = markedStudents.has(face.roll);
 
-                // Styling
+                // Render dynamic HUD bounding box
                 ctx.strokeStyle = isMarked ? "#eab308" : (livenessVerified ? "#16a34a" : "#3b82f6");
                 ctx.lineWidth = 3;
                 ctx.strokeRect(drawX, drawY, drawW, drawH);
@@ -229,8 +250,8 @@ async function detectLoop() {
             prevBoxes = newPrev;
 
         } else {
-            // Reset when face is no longer visible
-            if (Date.now() - lastFaceSeen > 1200) {
+            // Reset when face is out of view
+            if (Date.now() - lastFaceSeen > 900) {
                 prevBoxes = [];
                 stableFrames = 0;
                 consecutiveRecognitionFrames = 0;
@@ -244,7 +265,8 @@ async function detectLoop() {
         console.error("[RECOGNIZE LOOP ERROR]:", err);
     } finally {
         isDetecting = false;
-        setTimeout(detectLoop, 200);
+        // Ultra-low latency loop continuation
+        setTimeout(detectLoop, 30);
     }
 }
 
