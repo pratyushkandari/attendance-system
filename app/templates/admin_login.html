@@ -152,12 +152,14 @@ async function login() {
             }
         } else {
             if (data.status === "registered") {
-                document.getElementById("msg").innerText = "✅ Admin registered successfully! You can now log in.";
                 toggle();
+                document.getElementById("msg").innerText = "✅ Admin registered successfully! You can now log in.";
             } else if (data.status === "weak_password") {
                 document.getElementById("errorMsg").innerText = "⚠️ " + data.message;
+            } else if (data.status === "invalid_email") {
+                document.getElementById("errorMsg").innerText = "⚠️ " + data.message;
             } else if (data.status === "exists") {
-                document.getElementById("errorMsg").innerText = "⚠️ An administrator with this email already exists.";
+                document.getElementById("errorMsg").innerText = "⚠️ " + (data.message || "An administrator with this email already exists.");
             } else {
                 document.getElementById("errorMsg").innerText = "❌ " + (data.message || "Registration failed.");
             }

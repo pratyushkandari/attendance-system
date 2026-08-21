@@ -339,34 +339,17 @@ def register_admin():
     if not is_valid_pwd:
         return jsonify({"status": "weak_password", "message": pwd_error_msg}), 400
 
-    admin_count = Admin.query.count()
-    # If admins already exist, only an authenticated admin can create new admin accounts
-    if admin_count > 0 and "admin" not in session:
-        auth_header = request.headers.get("Authorization")
-        is_jwt_admin = False
-        if auth_header and auth_header.startswith("Bearer "):
-            try:
-                decode_jwt_token(auth_header.split(" ")[1].strip())
-                is_jwt_admin = True
-            except Exception:
-                pass
-
-        if not is_jwt_admin:
-            return jsonify({
-                "status": "error",
-                "message": "Unauthorized. Only existing administrators can register new admins."
-            }), 403
-
+    # Check duplicate email
     existing = Admin.query.filter_by(email=email).first()
     if existing:
-        return jsonify({"status": "exists", "message": "Admin with this email already exists."})
+        return jsonify({"status": "exists", "message": "An administrator with this email already exists."}), 400
 
     hashed_password = generate_password_hash(password)
     new_admin = Admin(email=email, password=hashed_password)
     db.session.add(new_admin)
     db.session.commit()
 
-    return jsonify({"status": "registered", "message": "Admin registered successfully."})
+    return jsonify({"status": "registered", "message": "Admin registered successfully."}), 200
 
 
 @main_bp.route("/login_admin", methods=["POST"])
