@@ -26,16 +26,16 @@
         </div>
     </div>
 
-    <!-- Smart Low-Lighting Fallback Alert -->
+    <!-- Smart Adaptive Hardware/Environment Fallback Alert -->
     <div id="fallbackAlert" style="display:none; margin-top:14px; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px 16px; text-align:left; align-items:center; justify-content:space-between; gap:12px;">
         <div style="display:flex; align-items:center; gap:10px;">
-            <span style="font-size:22px;">🌙</span>
+            <span id="fallbackIcon" style="font-size:22px;">🌙</span>
             <div>
-                <div style="font-weight:700; font-size:13px; color:#92400e;">Low Lighting Detected</div>
-                <div style="font-size:12px; color:#b45309;">Camera lighting is dim. Biometrics may take longer. You can switch to QR check-in:</div>
+                <div id="fallbackTitle" style="font-weight:700; font-size:13px; color:#92400e;">Low Lighting Detected</div>
+                <div id="fallbackSub" style="font-size:12px; color:#b45309;">Camera lighting is dim. You can switch to instant QR code check-in:</div>
             </div>
         </div>
-        <a href="/qr_session" style="background:#2563eb; color:#ffffff; padding:7px 14px; font-size:12px; font-weight:700; border-radius:6px; text-decoration:none; white-space:nowrap; display:inline-block;">
+        <a id="fallbackBtn" href="/qr_session" style="background:#2563eb; color:#ffffff; padding:7px 14px; font-size:12px; font-weight:700; border-radius:6px; text-decoration:none; white-space:nowrap; display:inline-block;">
             📱 Switch to QR
         </a>
     </div>

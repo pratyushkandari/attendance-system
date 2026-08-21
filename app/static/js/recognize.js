@@ -4,6 +4,9 @@ const ctx = canvas.getContext("2d");
 const resultEl = document.getElementById("result");
 const livenessBadge = document.getElementById("livenessBadge");
 const fallbackAlert = document.getElementById("fallbackAlert");
+const fallbackIcon = document.getElementById("fallbackIcon");
+const fallbackTitle = document.getElementById("fallbackTitle");
+const fallbackSub = document.getElementById("fallbackSub");
 
 let markedStudents = new Set();
 let prevBoxes = [];
@@ -24,6 +27,7 @@ let consecutiveRecognitionFrames = 0;
 const clientId = sessionStorage.getItem("cam_client_id") || "cam_" + Math.random().toString(36).substring(2, 11);
 sessionStorage.setItem("cam_client_id", clientId);
 
+// ---------------- WEBCAM INITIALIZATION & ERROR HANDLING ----------------
 navigator.mediaDevices.getUserMedia({
     video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
 })
@@ -35,9 +39,14 @@ navigator.mediaDevices.getUserMedia({
     };
 })
 .catch(err => {
-    console.error("[WEBCAM ERROR]:", err);
-    resultEl.innerHTML = "❌ <b>Camera Access Required:</b> Please grant webcam permissions or switch to mobile QR check-in.";
+    console.error("[WEBCAM HARDWARE ERROR]:", err);
+    resultEl.innerHTML = "❌ <b>Camera Access Error:</b> Webcam is blocked or disconnected.";
+
+    // Adaptively show smart Camera Fallback Prompt
     if (fallbackAlert) {
+        if (fallbackIcon) fallbackIcon.innerText = "📷";
+        if (fallbackTitle) fallbackTitle.innerText = "Camera Device Unavailable";
+        if (fallbackSub) fallbackSub.innerText = "Webcam is disconnected or blocked. You can take attendance with Dynamic QR instead:";
         fallbackAlert.style.display = "flex";
     }
 });
@@ -180,6 +189,9 @@ async function detectLoop() {
         if (data.status === "low_light" || data.error === "low light") {
             lowLightCounter++;
             if (lowLightCounter >= 2 && fallbackAlert) {
+                if (fallbackIcon) fallbackIcon.innerText = "🌙";
+                if (fallbackTitle) fallbackTitle.innerText = "Low Lighting Detected";
+                if (fallbackSub) fallbackSub.innerText = "Camera lighting is dim. Biometrics may be impaired. You can switch to QR check-in:";
                 fallbackAlert.style.display = "flex";
                 resultEl.innerHTML = "🌙 <b>Low lighting detected:</b> Please increase lighting or switch to QR.";
             }
