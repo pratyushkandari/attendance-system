@@ -117,4 +117,21 @@ def test_register_admin_invalid_email_format_rejected(authenticated_client):
     assert res.get_json()["status"] == "invalid_email"
 
 
+def test_password_is_never_stored_in_plaintext_and_is_cryptographically_hashed(app):
+    from app.models.admin import Admin
+    from werkzeug.security import check_password_hash
+
+    with app.app_context():
+        admin = Admin.query.filter_by(email="admin@test.com").first()
+        assert admin is not None
+        # Verify plaintext password is NEVER stored in database column
+        assert admin.password != "password123"
+        # Verify cryptographic salted hash format (scrypt or pbkdf2)
+        assert admin.password.startswith(("scrypt:", "pbkdf2:sha256:", "argon2:"))
+        # Verify mathematical hash resolution
+        assert check_password_hash(admin.password, "password123") is True
+        assert check_password_hash(admin.password, "wrongpassword") is False
+
+
+
 
