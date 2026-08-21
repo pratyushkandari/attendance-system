@@ -100,3 +100,21 @@ def test_register_admin_weak_password_rejected(authenticated_client):
     assert res.get_json()["status"] == "registered"
 
 
+def test_register_admin_invalid_email_format_rejected(authenticated_client):
+    # Missing @ symbol
+    res = authenticated_client.post("/register_admin", json={"email": "plainaddress.com", "password": "AdminSecure@2026!"})
+    assert res.status_code == 400
+    assert res.get_json()["status"] == "invalid_email"
+
+    # Missing domain extension
+    res = authenticated_client.post("/register_admin", json={"email": "user@nodomain", "password": "AdminSecure@2026!"})
+    assert res.status_code == 400
+    assert res.get_json()["status"] == "invalid_email"
+
+    # Email with spaces
+    res = authenticated_client.post("/register_admin", json={"email": "user name@example.com", "password": "AdminSecure@2026!"})
+    assert res.status_code == 400
+    assert res.get_json()["status"] == "invalid_email"
+
+
+

@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import Student
 from app.extensions import db
-from app.routes.main import admin_required
+from app.routes.main import admin_required, validate_email_format
 from app.ai.facenet_model import mtcnn, get_embedding_from_crop
 
 student_bp = Blueprint("student", __name__)
@@ -49,6 +49,10 @@ def register():
                 return jsonify({"error": f"{field.replace('_', ' ').title()} is required"}), 400
 
         email = data["email"].strip().lower()
+        is_valid_email, email_err = validate_email_format(email)
+        if not is_valid_email:
+            return jsonify({"error": email_err}), 400
+
         if Student.query.filter_by(email=email).first():
             return jsonify({"error": "A student with this email is already registered."}), 400
 

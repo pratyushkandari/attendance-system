@@ -225,7 +225,55 @@ def qr_result():
     return render_template("qr_result.html")
 
 
-# ================= ADMIN AUTH API =================
+import re
+
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+
+def validate_email_format(email):
+    """
+    Validates email format using RFC 5322 standards:
+    - Must not be empty, max 254 characters
+    - Must contain valid local-part and valid domain
+    - TLD must be at least 2 alpha characters
+    - Disallows invalid characters, spaces, and consecutive dots
+    """
+    if not email or not isinstance(email, str):
+        return False, "Email address is required."
+
+    email = email.strip()
+    if len(email) > 254:
+        return False, "Email address exceeds maximum length of 254 characters."
+
+    if " " in email:
+        return False, "Email address cannot contain spaces."
+
+    if ".." in email:
+        return False, "Email address cannot contain consecutive dots."
+
+    if "@" not in email:
+        return False, "Invalid email format: missing '@' symbol (e.g. user@example.com)."
+
+    parts = email.split("@")
+    if len(parts) != 2:
+        return False, "Invalid email format: contains multiple '@' symbols."
+
+    local, domain = parts
+    if not local or len(local) > 64:
+        return False, "Invalid email format: username before '@' is invalid."
+
+    if not domain or "." not in domain:
+        return False, "Invalid email format: missing domain (e.g. user@example.com)."
+
+    tld = domain.split(".")[-1]
+    if len(tld) < 2 or not tld.isalpha():
+        return False, "Invalid email format: invalid top-level domain extension (.com, .edu, etc.)."
+
+    if not EMAIL_REGEX.match(email):
+        return False, "Invalid email format. Please provide a valid email (e.g. user@example.com)."
+
+    return True, ""
+
 
 def validate_password_strength(password, email=""):
     """
@@ -281,6 +329,11 @@ def register_admin():
     if not email or not password:
         return jsonify({"status": "error", "message": "Email and password are required."}), 400
 
+    # RFC 5322 Email validation
+    is_valid_email, email_error_msg = validate_email_format(email)
+    if not is_valid_email:
+        return jsonify({"status": "invalid_email", "message": email_error_msg}), 400
+
     # Enterprise password complexity validation
     is_valid_pwd, pwd_error_msg = validate_password_strength(password, email=email)
     if not is_valid_pwd:
@@ -324,6 +377,11 @@ def login_admin():
 
     if not email or not password:
         return jsonify({"status": "invalid", "message": "Missing email or password."}), 400
+
+    # RFC 5322 Email format validation
+    is_valid_email, email_err = validate_email_format(email)
+    if not is_valid_email:
+        return jsonify({"status": "invalid_email", "message": email_err}), 400
 
     locked, remaining_min = is_account_locked(email)
     if locked:
