@@ -11,11 +11,12 @@ Traditional attendance systems suffer from two main bottlenecks:
 2. **Proxy Attendance in QR Systems:** Static QR codes posted in classrooms are easily photographed and shared via messaging apps, allowing students to check in remotely.
 
 This project addresses both problems through:
-* **Hybrid Computer Vision Pipeline:** MTCNN runs periodically (1 in 8 frames), while lightweight OpenCV CSRT trackers maintain bounding boxes between detections at 30+ FPS (<10ms CPU time).
+* **Hybrid Computer Vision Pipeline:** MTCNN runs periodically (1 in 4 frames), while lightweight OpenCV CSRT trackers maintain bounding boxes between detections at 30+ FPS (<10ms CPU time).
 * **BLAS Vector Similarity:** Normalized 512-D face embeddings are matched against registered student matrices via single-instruction SIMD dot products (`np.dot(matrix, query_vector)`), executing in ~0.2ms for 10,000 profiles.
-* **Anti-Spoofing:** Client-side Eye Aspect Ratio (EAR) contrast tracking requires natural blinking before marking attendance.
+* **Anti-Spoofing & Liveness:** Client-side Eye Aspect Ratio (EAR) contrast tracking requires natural eyelid blinking to verify live human presence before marking attendance.
+* **Environmental & Hardware Resilience:** Real-time luminance monitoring automatically detects dim lighting and camera disconnections, prompting a seamless 1-click fallback to dynamic QR attendance.
 * **Time-Bound Dynamic QR Tokens:** Server generates HMAC-SHA256 tokens with a 15-second TTL that auto-rotate every 5 seconds, preventing replay attacks.
-* **Hybrid Auth Layer:** Dual-mode authentication accepting either `Authorization: Bearer <jwt_token>` (for REST/mobile clients) or session cookies (for web dashboards).
+* **Hybrid Auth Layer:** Dual-mode authentication accepting either `Authorization: Bearer <jwt_token>` (for REST/mobile clients) or session cookies (for web dashboards) with sliding brute-force lockout.
 
 ---
 
@@ -188,13 +189,26 @@ pytest --cov=app --cov-report=term-missing
 
 ---
 
+## Fault Tolerance & Real-World Edge Cases
+
+| Failure Mode / Edge Case | Engineering Mitigation | System Behavior |
+| :--- | :--- | :--- |
+| **Dim Classroom Lighting** | Grayscale luminance check ($\text{mean} < 35$) | Displays smart interactive prompt ➔ 1-click switch to Dynamic QR attendance |
+| **Webcam Unplugged / Blocked** | `getUserMedia` hardware exception trapping | Catches error safely and routes user to Mobile QR check-in session |
+| **Unregistered Person in View** | Biometric similarity $< 0.70$ filter | Visualizes red HUD box `⚠️ Unregistered Face (xx%)` with zero DB commits |
+| **Static Photo Presentation** | Client-side Eye Aspect Ratio (EAR) contrast variance | Requires real eyelid blink before triggering attendance submission |
+| **Brute-Force Login Attacks** | Exponential attempt tracking | 3 failed attempts triggers automatic 15-minute sliding lockout |
+| **Cloud DB Idle Disconnections** | `pool_pre_ping: True` + `pool_recycle: 280` | Pre-validates stale connections and reconnects without dropping HTTP requests |
+
+---
+
 ## Continuous Integration
 
 The `.github/workflows/ci.yml` pipeline automatically runs on every push and pull request:
 1. Installs system dependencies (`libgl1`, `libglib2.0-0`).
 2. Runs `ruff` for code style and formatting checks.
 3. Runs `bandit` for static security vulnerability scanning.
-4. Executes the full 23-test `pytest` test suite with coverage assertions.
+4. Executes the full 24-test `pytest` test suite with coverage assertions.
 
 ---
 
