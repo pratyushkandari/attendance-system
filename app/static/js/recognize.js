@@ -3,12 +3,14 @@ const canvas = document.getElementById("overlay");
 const ctx = canvas.getContext("2d");
 const resultEl = document.getElementById("result");
 const livenessBadge = document.getElementById("livenessBadge");
+const fallbackAlert = document.getElementById("fallbackAlert");
 
 let markedStudents = new Set();
 let prevBoxes = [];
 let stableFrames = 0;
 let lastFaceSeen = Date.now();
 let isDetecting = false;
+let lowLightCounter = 0;
 
 // ---------------- LIVENESS & BLINK TRACKING ----------------
 let livenessVerified = false;
@@ -170,6 +172,20 @@ async function detectLoop() {
 
         const data = await res.json();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Low-lighting fallback handling
+        if (data.status === "low_light" || data.error === "low light") {
+            lowLightCounter++;
+            if (lowLightCounter >= 2 && fallbackAlert) {
+                fallbackAlert.style.display = "flex";
+                resultEl.innerHTML = "🌙 <b>Low lighting detected:</b> Please increase lighting or switch to QR.";
+            }
+        } else {
+            lowLightCounter = 0;
+            if (fallbackAlert && data.faces && data.faces.length > 0) {
+                fallbackAlert.style.display = "none";
+            }
+        }
 
         if (data.faces && data.faces.length > 0) {
             stableFrames++;

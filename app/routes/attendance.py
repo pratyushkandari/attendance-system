@@ -71,7 +71,12 @@ def recognize_with_box():
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         brightness = np.mean(gray)
         if brightness < 35:
-            return jsonify({"faces": [], "error": "low light"})
+            return jsonify({
+                "faces": [],
+                "status": "low_light",
+                "error": "low light",
+                "message": "Low lighting detected. Switch to dynamic QR check-in if needed."
+            })
 
         session_data = get_client_tracker_session(client_id)
         session_data["frame_count"] += 1
