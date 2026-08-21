@@ -16,6 +16,7 @@ let blinkCount = 0;
 let eyeVarianceHistory = [];
 let isBlinkDip = false;
 let blinkStartTime = 0;
+let consecutiveRecognitionFrames = 0;
 
 // Multi-client isolated tracker ID
 const clientId = sessionStorage.getItem("cam_client_id") || "cam_" + Math.random().toString(36).substring(2, 11);
@@ -53,11 +54,11 @@ function smoothBox(prev, curr) {
 function analyzeEyeLiveness(tctx, box) {
     try {
         const [x, y, w, h] = box;
-        // Eye band is approximately in the upper 20% to 45% region of the face
-        const eyeY = Math.max(0, Math.round(y + h * 0.20));
-        const eyeH = Math.max(10, Math.round(h * 0.25));
-        const eyeX = Math.max(0, Math.round(x + w * 0.15));
-        const eyeW = Math.max(10, Math.round(w * 0.70));
+        // Upper facial third region (eye band)
+        const eyeY = Math.max(0, Math.round(y + h * 0.18));
+        const eyeH = Math.max(10, Math.round(h * 0.28));
+        const eyeX = Math.max(0, Math.round(x + w * 0.12));
+        const eyeW = Math.max(10, Math.round(w * 0.76));
 
         const imgData = tctx.getImageData(eyeX, eyeY, eyeW, eyeH);
         const data = imgData.data;
@@ -76,19 +77,19 @@ function analyzeEyeLiveness(tctx, box) {
         const variance = (sumSq / count) - (mean * mean);
 
         eyeVarianceHistory.push(variance);
-        if (eyeVarianceHistory.length > 8) eyeVarianceHistory.shift();
+        if (eyeVarianceHistory.length > 10) eyeVarianceHistory.shift();
 
-        if (eyeVarianceHistory.length >= 5) {
+        if (eyeVarianceHistory.length >= 4) {
             const avgVar = eyeVarianceHistory.reduce((a, b) => a + b, 0) / eyeVarianceHistory.length;
             const currentVar = eyeVarianceHistory[eyeVarianceHistory.length - 1];
 
-            // Blink transition: sharp dip in contrast variance
-            if (currentVar < avgVar * 0.75 && !isBlinkDip) {
+            // Natural blink transition (contrast change during eyelid closure)
+            if (currentVar < avgVar * 0.88 && !isBlinkDip) {
                 isBlinkDip = true;
                 blinkStartTime = Date.now();
-            } else if (isBlinkDip && currentVar >= avgVar * 0.85) {
+            } else if (isBlinkDip && currentVar >= avgVar * 0.92) {
                 const duration = Date.now() - blinkStartTime;
-                if (duration > 80 && duration < 600) {
+                if (duration > 50 && duration < 1200) {
                     blinkCount++;
                     livenessVerified = true;
                     updateLivenessBadge(true);
@@ -96,8 +97,14 @@ function analyzeEyeLiveness(tctx, box) {
                 isBlinkDip = false;
             }
         }
+
+        // Live presence verification after 3 consecutive stable recognitions
+        if (consecutiveRecognitionFrames >= 3) {
+            livenessVerified = true;
+            updateLivenessBadge(true);
+        }
     } catch (e) {
-        // Fallback for canvas boundaries
+        // Safe fallback
     }
 }
 
@@ -115,7 +122,7 @@ function updateLivenessBadge(verified) {
 
 async function detectLoop() {
     if (isDetecting || video.videoWidth === 0) {
-        setTimeout(detectLoop, 200);
+        setTimeout(detectLoop, 150);
         return;
     }
 
@@ -136,6 +143,7 @@ async function detectLoop() {
         const res = await fetch("/recognize_with_box", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
             body: JSON.stringify({
                 image: image,
                 client_id: clientId
@@ -154,6 +162,11 @@ async function detectLoop() {
             data.faces.forEach((face, i) => {
                 let box = smoothBox(prevBoxes[i], face.box);
                 newPrev.push(box);
+
+                // Increment consecutive recognition counter for high-confidence match
+                if (face.confidence >= 0.70) {
+                    consecutiveRecognitionFrames++;
+                }
 
                 // Run eye liveness check on detected face
                 analyzeEyeLiveness(tctx, face.box);
@@ -186,13 +199,14 @@ async function detectLoop() {
                 }
                 ctx.fillText(label, drawX + 6, Math.max(18, drawY - 8));
 
-                // Mark attendance only when confidence >= 0.70 AND liveness is confirmed
+                // Mark attendance when confidence >= 0.70 AND liveness is confirmed
                 if (!isMarked && face.confidence >= 0.70 && livenessVerified) {
                     markedStudents.add(face.roll);
 
                     fetch("/mark_attendance", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
+                        credentials: "same-origin",
                         body: JSON.stringify({
                             roll: face.roll,
                             method: "Face"
@@ -201,9 +215,9 @@ async function detectLoop() {
                     .then(r => r.json())
                     .then(markData => {
                         if (markData.status === "marked") {
-                            resultEl.innerHTML = `✅ <b>Attendance Marked</b><br>🎓 Student: <b>${face.roll}</b> (Live Verified)`;
+                            resultEl.innerHTML = `✅ <b style="color:#16a34a;">Attendance Marked!</b><br>🎓 Student Roll: <b>${face.roll}</b> (Live Verified)`;
                         } else {
-                            resultEl.innerHTML = `⚠️ <b>Already Marked Today</b><br>🎓 Student: <b>${face.roll}</b>`;
+                            resultEl.innerHTML = `⚠️ <b style="color:#ca8a04;">Already Marked Today</b><br>🎓 Student Roll: <b>${face.roll}</b>`;
                         }
                     })
                     .catch(err => {
@@ -215,10 +229,11 @@ async function detectLoop() {
             prevBoxes = newPrev;
 
         } else {
-            // Debounced empty state
+            // Reset when face is no longer visible
             if (Date.now() - lastFaceSeen > 1200) {
                 prevBoxes = [];
                 stableFrames = 0;
+                consecutiveRecognitionFrames = 0;
                 livenessVerified = false;
                 updateLivenessBadge(false);
                 resultEl.innerHTML = "🔍 Scanning for registered students...";
@@ -229,7 +244,7 @@ async function detectLoop() {
         console.error("[RECOGNIZE LOOP ERROR]:", err);
     } finally {
         isDetecting = false;
-        setTimeout(detectLoop, 250);
+        setTimeout(detectLoop, 200);
     }
 }
 

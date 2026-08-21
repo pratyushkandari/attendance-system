@@ -9,7 +9,7 @@ from itsdangerous import SignatureExpired, BadSignature
 
 from app.models import Student, Attendance
 from app.extensions import db
-from app.routes.main import admin_required, get_qr_serializer
+from app.routes.main import admin_required, get_qr_serializer, decode_jwt_token
 from app.ai.facenet_model import mtcnn, get_embedding_from_crop
 from app.ai.face_utils import cosine_similarity
 
@@ -215,7 +215,16 @@ def mark_attendance():
             except BadSignature:
                 return jsonify({"status": "error", "message": "Invalid QR code signature."}), 400
         elif method == "Face":
-            if "admin" not in session:
+            is_authorized = ("admin" in session)
+            if not is_authorized:
+                auth_header = request.headers.get("Authorization")
+                if auth_header and auth_header.startswith("Bearer "):
+                    try:
+                        decode_jwt_token(auth_header.split(" ")[1].strip())
+                        is_authorized = True
+                    except Exception:
+                        pass
+            if not is_authorized:
                 return jsonify({"status": "error", "message": "Unauthorized face attendance session."}), 401
         else:
             return jsonify({"status": "error", "message": "Invalid attendance method."}), 400
