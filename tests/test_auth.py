@@ -76,3 +76,16 @@ def test_tampered_jwt_bearer_access_blocked(client, app):
     res = client.get("/records", headers=headers)
     assert res.status_code == 401
     assert "invalid" in res.get_json()["error"].lower()
+
+
+def test_register_admin_weak_password_rejected(authenticated_client):
+    # Weak password (<8 chars)
+    res = authenticated_client.post("/register_admin", json={"email": "newadmin@test.com", "password": "123"})
+    assert res.status_code == 400
+    assert res.get_json()["status"] == "weak_password"
+
+    # Weak password (no number)
+    res = authenticated_client.post("/register_admin", json={"email": "newadmin@test.com", "password": "passwordonly"})
+    assert res.status_code == 400
+    assert res.get_json()["status"] == "weak_password"
+

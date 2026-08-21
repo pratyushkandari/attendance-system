@@ -227,6 +227,22 @@ def qr_result():
 
 # ================= ADMIN AUTH API =================
 
+def validate_password_strength(password):
+    """
+    Enforces enterprise password strength policy:
+    - Minimum 8 characters
+    - At least one numeric digit (0-9)
+    - At least one letter (a-z, A-Z)
+    """
+    if not password or len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    if not any(c.isdigit() for c in password):
+        return False, "Password must contain at least one number (0-9)."
+    if not any(c.isalpha() for c in password):
+        return False, "Password must contain at least one alphabetic letter."
+    return True, ""
+
+
 @main_bp.route("/register_admin", methods=["POST"])
 def register_admin():
     data = request.json or {}
@@ -235,6 +251,11 @@ def register_admin():
 
     if not email or not password:
         return jsonify({"status": "error", "message": "Email and password are required."}), 400
+
+    # Password complexity validation
+    is_valid_pwd, pwd_error_msg = validate_password_strength(password)
+    if not is_valid_pwd:
+        return jsonify({"status": "weak_password", "message": pwd_error_msg}), 400
 
     admin_count = Admin.query.count()
     # If admins already exist, only an authenticated admin can create new admin accounts
