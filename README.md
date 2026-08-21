@@ -182,10 +182,10 @@ pytest --cov=app --cov-report=term-missing
 ```
 
 ### Test Coverage Areas:
-* `tests/test_auth.py`: JWT token generation, Bearer header authorization, expired/tampered token rejection, and sliding brute-force lockout.
-* `tests/test_crypto.py`: Dynamic QR HMAC serialization, signature verification, and instant expiration handling.
+* `tests/test_auth.py`: JWT token generation, Bearer header authorization, expired/tampered token rejection, NIST 800-63B password complexity, salted cryptographic password hashing, RFC 5322 email validation, and sliding brute-force lockout.
+* `tests/test_crypto.py`: Dynamic QR HMAC serialization, signature verification, instant expiration handling, and SafeCacheStore Redis/in-memory TTL cache.
 * `tests/test_vector.py`: Cosine similarity mathematics, zero-division guardrails, and BLAS matrix dot product matching.
-* `tests/test_attendance.py`: Student registration, collision-resistant roll generation, same-day duplicate prevention, and Prometheus `/metrics`.
+* `tests/test_attendance.py`: Student registration, collision-resistant roll generation, same-day duplicate prevention, CSV streaming export, and Prometheus `/metrics`.
 
 ---
 
@@ -197,8 +197,27 @@ pytest --cov=app --cov-report=term-missing
 | **Webcam Unplugged / Blocked** | `getUserMedia` hardware exception trapping | Catches error safely and routes user to Mobile QR check-in session |
 | **Unregistered Person in View** | Biometric similarity $< 0.70$ filter | Visualizes red HUD box `⚠️ Unregistered Face (xx%)` with zero DB commits |
 | **Static Photo Presentation** | Client-side Eye Aspect Ratio (EAR) contrast variance | Requires real eyelid blink before triggering attendance submission |
-| **Brute-Force Login Attacks** | Exponential attempt tracking | 3 failed attempts triggers automatic 15-minute sliding lockout |
+| **Brute-Force Login Attacks** | Exponential attempt tracking in Redis / RAM | 3 failed attempts triggers automatic 15-minute sliding lockout |
 | **Cloud DB Idle Disconnections** | `pool_pre_ping: True` + `pool_recycle: 280` | Pre-validates stale connections and reconnects without dropping HTTP requests |
+| **Peak Attendance Traffic Rush** | Gunicorn WSGI multi-threading + K8s HPA | Auto-scales pods from 2 to 10 instances based on CPU utilization |
+
+---
+
+## Cloud Orchestration & Kubernetes Deployment
+
+Enterprise declarative manifests are provided in the `k8s/` directory:
+
+```bash
+# Apply ConfigMap, Deployment, Service, and HPA
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/hpa.yaml
+
+# Check running pods & auto-scaling metrics
+kubectl get pods -l app=attendance-system
+kubectl get hpa attendance-hpa
+```
 
 ---
 
@@ -208,10 +227,11 @@ The `.github/workflows/ci.yml` pipeline automatically runs on every push and pul
 1. Installs system dependencies (`libgl1`, `libglib2.0-0`).
 2. Runs `ruff` for code style and formatting checks.
 3. Runs `bandit` for static security vulnerability scanning.
-4. Executes the full 24-test `pytest` test suite with coverage assertions.
+4. Executes the full 28-test `pytest` test suite with coverage assertions.
 
 ---
 
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+

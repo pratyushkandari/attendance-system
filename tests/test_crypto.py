@@ -42,3 +42,16 @@ def test_verify_qr_token_api(client):
     res = client.post("/verify_qr_token", json={"token": token})
     assert res.status_code == 200
     assert res.get_json()["valid"] is True
+
+
+def test_safe_cache_store_ttl_and_eviction():
+    from app.extensions import cache
+
+    # Set key with 2-second TTL
+    cache.set("test_qr_nonce_123", "used", ex=2)
+    assert cache.get("test_qr_nonce_123") == "used"
+
+    # Delete key
+    cache.delete("test_qr_nonce_123")
+    assert cache.get("test_qr_nonce_123") is None
+

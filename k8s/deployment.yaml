@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: attendance-api-deployment
+  labels:
+    app: attendance-system
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: attendance-system
+  template:
+    metadata:
+      labels:
+        app: attendance-system
+    spec:
+      containers:
+        - name: attendance-api
+          image: ghcr.io/pratyushkandari/attendance-system:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: attendance-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: attendance-secrets
+                  key: database-url
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: attendance-secrets
+                  key: secret-key
+            - name: REDIS_URL
+              value: "redis://redis-service:6379/0"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 5000
+            initialDelaySeconds: 25
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10

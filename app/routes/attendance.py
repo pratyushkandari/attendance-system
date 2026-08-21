@@ -1,14 +1,16 @@
+import io
+import csv
 import base64
 import time
 from datetime import datetime, timedelta
 import cv2
 import numpy as np
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, Response
 from sqlalchemy import func
 from itsdangerous import SignatureExpired, BadSignature
 
 from app.models import Student, Attendance
-from app.extensions import db
+from app.extensions import db, cache
 from app.routes.main import admin_required, get_qr_serializer, decode_jwt_token
 from app.ai.facenet_model import mtcnn, get_embedding_from_crop
 from app.ai.face_utils import cosine_similarity
@@ -304,6 +306,64 @@ def get_records():
     except Exception as e:
         print("[RECORDS ERROR]:", e)
         return jsonify({})
+
+
+# ---------------- EXPORT ATTENDANCE REPORT (CSV) ----------------
+@attendance_bp.route("/export_records", methods=["GET"])
+@admin_required
+def export_records():
+    """
+    Generates and streams a CSV report of attendance records with student profile metadata.
+    Supports optional query filters: date (YYYY-MM-DD), dept, roll.
+    """
+    try:
+        date_filter = request.args.get("date", "").strip()
+        dept_filter = request.args.get("dept", "").strip().upper()
+        roll_filter = request.args.get("roll", "").strip().upper()
+
+        query = db.session.query(Attendance, Student).outerjoin(
+            Student, Attendance.roll == Student.roll
+        )
+
+        if date_filter:
+            query = query.filter(func.date(Attendance.timestamp) == date_filter)
+        if dept_filter:
+            query = query.filter(Student.department == dept_filter)
+        if roll_filter:
+            query = query.filter(Attendance.roll == roll_filter)
+
+        records = query.order_by(Attendance.timestamp.desc()).all()
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "Attendance ID", "Roll Number", "Student Name",
+            "Department", "Year", "Email", "Method", "Date (IST)", "Time (IST)"
+        ])
+
+        for att, stu in records:
+            name = f"{stu.first_name} {stu.last_name}" if stu else "N/A"
+            dept = stu.department if stu else "N/A"
+            year = stu.year if stu else "N/A"
+            email = stu.email if stu else "N/A"
+            date_str = att.timestamp.strftime("%Y-%m-%d")
+            time_str = att.timestamp.strftime("%H:%M:%S")
+
+            writer.writerow([
+                att.id, att.roll, name, dept, year, email, att.method, date_str, time_str
+            ])
+
+        output.seek(0)
+        filename = f"attendance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        print("[EXPORT ERROR]:", e)
+        return jsonify({"error": "Failed to generate CSV export."}), 500
 
 
 # ---------------- CLEAR RECORDS (ADMIN PROTECTED) ----------------

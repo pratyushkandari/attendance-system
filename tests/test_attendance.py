@@ -70,3 +70,13 @@ def test_metrics_endpoint(client):
     res = client.get("/metrics")
     assert res.status_code == 200
     assert b"http_requests_total" in res.data
+
+
+def test_export_records_csv(authenticated_client):
+    res = authenticated_client.get("/export_records")
+    assert res.status_code == 200
+    assert res.mimetype == "text/csv"
+    assert "attachment; filename=attendance_report_" in res.headers.get("Content-Disposition", "")
+    assert b"Roll Number" in res.data
+    assert b"Student Name" in res.data
+

@@ -35,5 +35,5 @@ COPY . .
 # Expose Web & Metrics Port
 EXPOSE 5000
 
-# Start Flask Application
-CMD ["python", "run.py"]
+# Start Production Multi-Threaded Gunicorn WSGI Server
+CMD sh -c "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --threads 4 --timeout 120 run:app"
