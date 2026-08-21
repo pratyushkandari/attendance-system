@@ -141,27 +141,30 @@ def recognize_with_box():
                         best_score = float(scores[best_idx])
                         best_match = rolls[best_idx]
 
-                    # Strict match threshold
-                    if best_score >= 0.70 and best_match:
-                        # Instantiate CSRT tracker safely
-                        tracker = None
-                        if hasattr(cv2, "TrackerCSRT_create"):
-                            tracker = cv2.TrackerCSRT_create()
-                        elif hasattr(cv2, "legacy") and hasattr(cv2.legacy, "TrackerCSRT_create"):
-                            tracker = cv2.legacy.TrackerCSRT_create()
-                        elif hasattr(cv2, "TrackerKCF_create"):
-                            tracker = cv2.TrackerKCF_create()
+                    # Match threshold classification
+                    is_match = (best_score >= 0.70 and best_match is not None)
+                    roll_label = best_match if is_match else "Unknown"
 
-                        if tracker is not None:
-                            try:
-                                tracker.init(frame, (x, y, w, h))
-                                new_trackers.append(tracker)
-                                new_tracker_data.append({
-                                    "roll": best_match,
-                                    "confidence": float(best_score)
-                                })
-                            except Exception as te:
-                                print("[TRACKER INIT WARNING]:", te)
+                    # Instantiate tracker safely
+                    tracker = None
+                    if hasattr(cv2, "TrackerCSRT_create"):
+                        tracker = cv2.TrackerCSRT_create()
+                    elif hasattr(cv2, "legacy") and hasattr(cv2.legacy, "TrackerCSRT_create"):
+                        tracker = cv2.legacy.TrackerCSRT_create()
+                    elif hasattr(cv2, "TrackerKCF_create"):
+                        tracker = cv2.TrackerKCF_create()
+
+                    if tracker is not None:
+                        try:
+                            tracker.init(frame, (x, y, w, h))
+                            new_trackers.append(tracker)
+                            new_tracker_data.append({
+                                "roll": roll_label,
+                                "confidence": float(max(0.0, best_score)),
+                                "is_unknown": not is_match
+                            })
+                        except Exception as te:
+                            print("[TRACKER INIT WARNING]:", te)
 
                 session_data["trackers"] = new_trackers
                 session_data["tracker_data"] = new_tracker_data
@@ -179,6 +182,7 @@ def recognize_with_box():
                         results.append({
                             "roll": session_data["tracker_data"][i]["roll"],
                             "confidence": session_data["tracker_data"][i]["confidence"],
+                            "is_unknown": session_data["tracker_data"][i].get("is_unknown", False),
                             "box": [x, y, w, h]
                         })
                         surviving_trackers.append(tracker)

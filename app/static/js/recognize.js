@@ -36,7 +36,10 @@ navigator.mediaDevices.getUserMedia({
 })
 .catch(err => {
     console.error("[WEBCAM ERROR]:", err);
-    resultEl.innerHTML = "❌ Camera access denied. Please allow permissions.";
+    resultEl.innerHTML = "❌ <b>Camera Access Required:</b> Please grant webcam permissions or switch to mobile QR check-in.";
+    if (fallbackAlert) {
+        fallbackAlert.style.display = "flex";
+    }
 });
 
 /**
@@ -209,7 +212,10 @@ async function detectLoop() {
                 let box = smoothBox(prevBoxes[i], scaledBox);
                 newPrev.push(box);
 
-                if (face.confidence >= 0.70) {
+                const isUnknown = (face.is_unknown || face.roll === "Unknown");
+                const isMarked = markedStudents.has(face.roll);
+
+                if (!isUnknown && face.confidence >= 0.70) {
                     consecutiveRecognitionFrames++;
                 }
 
@@ -217,27 +223,43 @@ async function detectLoop() {
                 analyzeEyeLiveness(tctx, face.box);
 
                 const [drawX, drawY, drawW, drawH] = box.map(Math.round);
-                const isMarked = markedStudents.has(face.roll);
+
+                // Determine dynamic HUD color theme
+                let themeColor = "#3b82f6"; // Default blue
+                if (isUnknown) {
+                    themeColor = "#ef4444"; // Red for unregistered faces
+                } else if (isMarked) {
+                    themeColor = "#eab308"; // Gold for already marked
+                } else if (livenessVerified) {
+                    themeColor = "#16a34a"; // Green for live verified
+                }
 
                 // Render dynamic HUD bounding box
-                ctx.strokeStyle = isMarked ? "#eab308" : (livenessVerified ? "#16a34a" : "#3b82f6");
+                ctx.strokeStyle = themeColor;
                 ctx.lineWidth = 3;
                 ctx.strokeRect(drawX, drawY, drawW, drawH);
 
                 // Label badge
-                ctx.fillStyle = isMarked ? "#eab308" : (livenessVerified ? "#16a34a" : "#3b82f6");
-                ctx.fillRect(drawX, Math.max(0, drawY - 26), Math.max(140, drawW), 26);
+                ctx.fillStyle = themeColor;
+                ctx.fillRect(drawX, Math.max(0, drawY - 26), Math.max(160, drawW), 26);
 
                 ctx.fillStyle = "#ffffff";
                 ctx.font = "bold 13px sans-serif";
-                let label = isMarked ? `✓ ${face.roll} (Marked)` : `${face.roll} (${Math.round(face.confidence * 100)}%)`;
-                if (!isMarked && !livenessVerified) {
-                    label += " [Blink to verify]";
+                let label = "";
+                if (isUnknown) {
+                    label = `⚠️ Unregistered Face (${Math.round(face.confidence * 100)}%)`;
+                } else if (isMarked) {
+                    label = `✓ ${face.roll} (Marked)`;
+                } else {
+                    label = `${face.roll} (${Math.round(face.confidence * 100)}%)`;
+                    if (!livenessVerified) {
+                        label += " [Blink to verify]";
+                    }
                 }
                 ctx.fillText(label, drawX + 6, Math.max(18, drawY - 8));
 
-                // Mark attendance when confidence >= 0.70 AND liveness is confirmed
-                if (!isMarked && face.confidence >= 0.70 && livenessVerified) {
+                // Mark attendance ONLY for registered students when confidence >= 0.70 AND liveness is confirmed
+                if (!isUnknown && !isMarked && face.confidence >= 0.70 && livenessVerified) {
                     markedStudents.add(face.roll);
 
                     fetch("/mark_attendance", {
@@ -279,6 +301,7 @@ async function detectLoop() {
 
     } catch (err) {
         console.error("[RECOGNIZE LOOP ERROR]:", err);
+        resultEl.innerHTML = "⚡ <b>Reconnecting:</b> Verifying camera feed stream...";
     } finally {
         isDetecting = false;
         // Ultra-low latency loop continuation
