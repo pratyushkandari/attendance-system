@@ -1,6 +1,18 @@
-# Attendance Platform
+# Enterprise Biometric & Cryptographic Attendance Verification Platform
 
-A low-latency attendance verification system supporting real-time video facial recognition and dynamic cryptographic QR check-ins. Built with Flask, PyTorch (InceptionResnetV1), OpenCV, PostgreSQL (`pgvector`), Redis, and Prometheus.
+[![CI Pipeline](https://github.com/pratyushkandari/attendance-system/actions/workflows/ci.yml/badge.svg)](https://github.com/pratyushkandari/attendance-system/actions)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Render_Cloud-success?style=flat-square&logo=render)](https://attendance-system-60nr.onrender.com)
+[![Python](https://img.shields.io/badge/Python-3.10-blue?style=flat-square&logo=python)](https://python.org)
+[![PyTorch](https://img.shields.io/badge/PyTorch-CPU_Optimized-EE4C2C?style=flat-square&logo=pytorch)](https://pytorch.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16_pgvector-336791?style=flat-square&logo=postgresql)](https://postgresql.org)
+[![Docker](https://img.shields.io/badge/Docker-Multi_Stage-2496ED?style=flat-square&logo=docker)](https://docker.com)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-HPA_Manifests-326CE5?style=flat-square&logo=kubernetes)](https://kubernetes.io)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+
+A high-performance attendance verification platform supporting real-time video facial recognition ($<40\text{ms}$ latency on CPU) and time-bound cryptographic dynamic QR check-ins. Built with Flask, PyTorch (InceptionResnetV1), OpenCV, PostgreSQL (`pgvector`), Redis, and Prometheus telemetry.
+
+🔗 **Live Deployment:** [https://attendance-system-60nr.onrender.com](https://attendance-system-60nr.onrender.com)
+
 
 ---
 
