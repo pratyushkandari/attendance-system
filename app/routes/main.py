@@ -227,19 +227,48 @@ def qr_result():
 
 # ================= ADMIN AUTH API =================
 
-def validate_password_strength(password):
+def validate_password_strength(password, email=""):
     """
-    Enforces enterprise password strength policy:
-    - Minimum 8 characters
-    - At least one numeric digit (0-9)
-    - At least one letter (a-z, A-Z)
+    Enforces enterprise-grade NIST 800-63B password security policy:
+    1. Minimum 8 characters, maximum 128 characters
+    2. At least one lowercase letter (a-z)
+    3. At least one uppercase letter (A-Z)
+    4. At least one numeric digit (0-9)
+    5. At least one special character (!@#$%^&*...)
+    6. Disallows common dictionary/trivial passwords
+    7. Disallows password containing the email prefix
     """
-    if not password or len(password) < 8:
+    if not password:
+        return False, "Password cannot be empty."
+    if len(password) < 8:
         return False, "Password must be at least 8 characters long."
+    if len(password) > 128:
+        return False, "Password cannot exceed 128 characters."
+    if not any(c.islower() for c in password):
+        return False, "Password must contain at least one lowercase letter (a-z)."
+    if not any(c.isupper() for c in password):
+        return False, "Password must contain at least one uppercase letter (A-Z)."
     if not any(c.isdigit() for c in password):
-        return False, "Password must contain at least one number (0-9)."
-    if not any(c.isalpha() for c in password):
-        return False, "Password must contain at least one alphabetic letter."
+        return False, "Password must contain at least one numeric digit (0-9)."
+
+    special_chars = set("!@#$%^&*()_+-=[]{}|;:,.<>?/~`'\"\\")
+    if not any(c in special_chars for c in password):
+        return False, "Password must contain at least one special symbol (e.g. !@#$%^&*)."
+
+    # Common trivial blocklist
+    common_weak = {
+        "password123!", "admin12345!", "welcome123!", "qwerty12345!",
+        "pass@123456", "admin@12345", "administrator"
+    }
+    if password.lower() in common_weak:
+        return False, "Password is too common or easily guessable. Please choose a stronger password."
+
+    # Prevent email prefix usage
+    if email and "@" in email:
+        prefix = email.split("@")[0].lower()
+        if len(prefix) >= 3 and prefix in password.lower():
+            return False, "Password cannot contain your email username or handle."
+
     return True, ""
 
 
@@ -252,8 +281,8 @@ def register_admin():
     if not email or not password:
         return jsonify({"status": "error", "message": "Email and password are required."}), 400
 
-    # Password complexity validation
-    is_valid_pwd, pwd_error_msg = validate_password_strength(password)
+    # Enterprise password complexity validation
+    is_valid_pwd, pwd_error_msg = validate_password_strength(password, email=email)
     if not is_valid_pwd:
         return jsonify({"status": "weak_password", "message": pwd_error_msg}), 400
 

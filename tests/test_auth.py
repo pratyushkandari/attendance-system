@@ -84,8 +84,19 @@ def test_register_admin_weak_password_rejected(authenticated_client):
     assert res.status_code == 400
     assert res.get_json()["status"] == "weak_password"
 
-    # Weak password (no number)
-    res = authenticated_client.post("/register_admin", json={"email": "newadmin@test.com", "password": "passwordonly"})
+    # Weak password (no special character)
+    res = authenticated_client.post("/register_admin", json={"email": "newadmin@test.com", "password": "Password123"})
     assert res.status_code == 400
     assert res.get_json()["status"] == "weak_password"
+
+    # Weak password (no uppercase)
+    res = authenticated_client.post("/register_admin", json={"email": "newadmin@test.com", "password": "password@123"})
+    assert res.status_code == 400
+    assert res.get_json()["status"] == "weak_password"
+
+    # Strong password (meets all criteria)
+    res = authenticated_client.post("/register_admin", json={"email": "uniqueadmin@test.com", "password": "AdminSecure@2026!"})
+    assert res.status_code == 200
+    assert res.get_json()["status"] == "registered"
+
 

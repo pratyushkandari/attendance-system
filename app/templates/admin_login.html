@@ -2,7 +2,7 @@
 {% block content %}
 
 <div class="container">
-    <div class="card" style="max-width:420px; margin:auto; text-align:center;">
+    <div class="card" style="max-width:440px; margin:auto; text-align:center;">
 
         <h2 id="title">🔐 Admin Login</h2>
         <p id="subTitle" style="color:#64748b; font-size:13px; margin-top:-6px;">
@@ -11,7 +11,16 @@
 
         <div style="margin: 15px 0;">
             <input id="email" type="email" placeholder="admin@example.com" style="margin-bottom:12px;">
-            <input id="password" type="password" placeholder="Password">
+            <input id="password" type="password" placeholder="Password" oninput="checkStrength(this.value)">
+        </div>
+
+        <!-- Live Password Requirements for Registration -->
+        <div id="pwdRequirements" style="display:none; text-align:left; font-size:12px; margin-bottom:14px; background:#f8fafc; padding:10px 14px; border-radius:8px; border:1px solid #e2e8f0;">
+            <div style="font-weight:700; margin-bottom:5px; color:#334155;">Password Security Requirements:</div>
+            <div id="reqLen" style="color:#ef4444; margin-bottom:2px;">• Minimum 8 characters</div>
+            <div id="reqCase" style="color:#ef4444; margin-bottom:2px;">• Uppercase (A-Z) & lowercase (a-z)</div>
+            <div id="reqNum" style="color:#ef4444; margin-bottom:2px;">• At least one number (0-9)</div>
+            <div id="reqSpecial" style="color:#ef4444;">• At least one special symbol (!@#$%^&*)</div>
         </div>
 
         <!-- Feedback Messages -->
@@ -35,6 +44,51 @@
 <script>
 let isLogin = true;
 
+function checkStrength(pwd) {
+    if (isLogin) return;
+
+    const reqLen = document.getElementById("reqLen");
+    const reqCase = document.getElementById("reqCase");
+    const reqNum = document.getElementById("reqNum");
+    const reqSpecial = document.getElementById("reqSpecial");
+
+    // Length check
+    if (pwd.length >= 8) {
+        reqLen.style.color = "#16a34a";
+        reqLen.innerText = "✓ Minimum 8 characters";
+    } else {
+        reqLen.style.color = "#ef4444";
+        reqLen.innerText = "• Minimum 8 characters";
+    }
+
+    // Case check
+    if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) {
+        reqCase.style.color = "#16a34a";
+        reqCase.innerText = "✓ Uppercase & lowercase included";
+    } else {
+        reqCase.style.color = "#ef4444";
+        reqCase.innerText = "• Uppercase (A-Z) & lowercase (a-z)";
+    }
+
+    // Number check
+    if (/\d/.test(pwd)) {
+        reqNum.style.color = "#16a34a";
+        reqNum.innerText = "✓ Number included";
+    } else {
+        reqNum.style.color = "#ef4444";
+        reqNum.innerText = "• At least one number (0-9)";
+    }
+
+    // Special character check
+    if (/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?/~`'"]/.test(pwd)) {
+        reqSpecial.style.color = "#16a34a";
+        reqSpecial.innerText = "✓ Special symbol included";
+    } else {
+        reqSpecial.style.color = "#ef4444";
+        reqSpecial.innerText = "• At least one special symbol (!@#$%^&*)";
+    }
+}
+
 function toggle() {
     isLogin = !isLogin;
 
@@ -47,6 +101,9 @@ function toggle() {
     document.getElementById("mainBtn").innerText =
         isLogin ? "Login" : "Register Admin";
 
+    document.getElementById("pwdRequirements").style.display =
+        isLogin ? "none" : "block";
+
     document.getElementById("toggleText").innerHTML =
         isLogin
         ? `First time setup? <a href="#" onclick="toggle()" style="color:#2563eb; font-weight:600; text-decoration:none;">Create Admin Account</a>`
@@ -54,6 +111,10 @@ function toggle() {
 
     document.getElementById("errorMsg").innerText = "";
     document.getElementById("msg").innerText = "";
+
+    if (!isLogin) {
+        checkStrength(document.getElementById("password").value);
+    }
 }
 
 async function login() {
@@ -93,6 +154,8 @@ async function login() {
             if (data.status === "registered") {
                 document.getElementById("msg").innerText = "✅ Admin registered successfully! You can now log in.";
                 toggle();
+            } else if (data.status === "weak_password") {
+                document.getElementById("errorMsg").innerText = "⚠️ " + data.message;
             } else if (data.status === "exists") {
                 document.getElementById("errorMsg").innerText = "⚠️ An administrator with this email already exists.";
             } else {
