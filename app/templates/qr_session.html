@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card" style="max-width:480px; margin:auto; text-align:center; padding:30px;">
+    <h2>📱 Dynamic QR Attendance Session</h2>
+    <p style="color:#64748b; font-size:14px; margin-top:-5px;">
+        Scan this secure QR code using your mobile device.
+    </p>
+
+    <div style="background:#ffffff; padding:15px; border-radius:12px; display:inline-block; border:1px solid #e2e8f0; margin:15px 0;">
+        <img id="qrImage" width="240" height="240" alt="Attendance QR Code" style="display:block;" />
+    </div>
+
+    <!-- Security Indicator & Refresh Timer -->
+    <div style="margin-top:10px;">
+        <div style="height:6px; background:#e2e8f0; border-radius:4px; overflow:hidden; max-width:240px; margin:auto;">
+            <div id="countdownBar" style="height:100%; width:100%; background:#2563eb; transition:width 1s linear;"></div>
+        </div>
+        <p id="qrStatus" style="font-size:12px; color:#64748b; margin-top:8px;">
+            🔒 Cryptographically signed token • Refreshing in 5s
+        </p>
+    </div>
+</div>
+
+<script>
+    let countdownInterval = null;
+    let secondsLeft = 5;
+
+    async function fetchDynamicQR() {
+        try {
+            const res = await fetch("/generate_qr_token");
+            const data = await res.json();
+
+            if (data.status === "success" && data.token) {
+                const baseUrl = window.location.origin;
+                const dynamicUrl = `${baseUrl}/qr_mobile?token=${encodeURIComponent(data.token)}`;
+
+                document.getElementById("qrImage").src =
+                    `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(dynamicUrl)}&t=${Date.now()}`;
+
+                resetCountdown();
+            }
+        } catch (err) {
+            console.error("[QR GENERATE ERROR]:", err);
+            document.getElementById("qrStatus").innerText = "⚠️ Error fetching security token.";
+        }
+    }
+
+    function resetCountdown() {
+        secondsLeft = 5;
+        const bar = document.getElementById("countdownBar");
+        bar.style.transition = "none";
+        bar.style.width = "100%";
+
+        setTimeout(() => {
+            bar.style.transition = "width 5s linear";
+            bar.style.width = "0%";
+        }, 50);
+    }
+
+    // Initial load and recurring 5s rotation
+    fetchDynamicQR();
+    setInterval(fetchDynamicQR, 5000);
+</script>
+
+{% endblock %}

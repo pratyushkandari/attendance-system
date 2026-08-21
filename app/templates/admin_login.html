@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container">
+    <div class="card" style="max-width:420px; margin:auto; text-align:center;">
+
+        <h2 id="title">🔐 Admin Login</h2>
+        <p id="subTitle" style="color:#64748b; font-size:13px; margin-top:-6px;">
+            Enter your credentials to access the attendance dashboard
+        </p>
+
+        <div style="margin: 15px 0;">
+            <input id="email" type="email" placeholder="admin@example.com" style="margin-bottom:12px;">
+            <input id="password" type="password" placeholder="Password">
+        </div>
+
+        <!-- Feedback Messages -->
+        <p id="errorMsg" style="color:#dc2626; font-size:14px; margin:8px 0; font-weight:500;"></p>
+        <p id="msg" style="color:#16a34a; font-size:14px; margin:8px 0; font-weight:500;"></p>
+
+        <button onclick="login()" id="mainBtn" style="width:100%; padding:11px;">
+            Login
+        </button>
+
+        <hr style="margin:20px 0; border:none; border-top:1px solid #e2e8f0;">
+
+        <p id="toggleText" style="font-size:13px; color:#64748b;">
+            First time setup?
+            <a href="#" onclick="toggle()" style="color:#2563eb; font-weight:600; text-decoration:none;">Create Admin Account</a>
+        </p>
+
+    </div>
+</div>
+
+<script>
+let isLogin = true;
+
+function toggle() {
+    isLogin = !isLogin;
+
+    document.getElementById("title").innerText =
+        isLogin ? "🔐 Admin Login" : "📝 Admin Registration";
+
+    document.getElementById("subTitle").innerText =
+        isLogin ? "Enter your credentials to access the attendance dashboard" : "Register the primary administrator account";
+
+    document.getElementById("mainBtn").innerText =
+        isLogin ? "Login" : "Register Admin";
+
+    document.getElementById("toggleText").innerHTML =
+        isLogin
+        ? `First time setup? <a href="#" onclick="toggle()" style="color:#2563eb; font-weight:600; text-decoration:none;">Create Admin Account</a>`
+        : `Already registered? <a href="#" onclick="toggle()" style="color:#2563eb; font-weight:600; text-decoration:none;">Return to Login</a>`;
+
+    document.getElementById("errorMsg").innerText = "";
+    document.getElementById("msg").innerText = "";
+}
+
+async function login() {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (!email || !password) {
+        document.getElementById("errorMsg").innerText = "⚠️ Please enter both email and password.";
+        return;
+    }
+
+    const url = isLogin ? "/login_admin" : "/register_admin";
+
+    try {
+        const res = await fetch(url, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+
+        document.getElementById("errorMsg").innerText = "";
+        document.getElementById("msg").innerText = "";
+
+        if (isLogin) {
+            if (data.status === "success") {
+                window.location.href = "/dashboard";
+            } else if (data.status === "locked") {
+                document.getElementById("errorMsg").innerText = "🚫 " + (data.message || "Account temporarily locked.");
+            } else if (data.status === "invalid") {
+                document.getElementById("errorMsg").innerText = "❌ " + (data.message || "Invalid credentials.");
+            } else {
+                document.getElementById("errorMsg").innerText = "❌ " + (data.message || "Login failed.");
+            }
+        } else {
+            if (data.status === "registered") {
+                document.getElementById("msg").innerText = "✅ Admin registered successfully! You can now log in.";
+                toggle();
+            } else if (data.status === "exists") {
+                document.getElementById("errorMsg").innerText = "⚠️ An administrator with this email already exists.";
+            } else {
+                document.getElementById("errorMsg").innerText = "❌ " + (data.message || "Registration failed.");
+            }
+        }
+
+    } catch (err) {
+        console.error(err);
+        document.getElementById("errorMsg").innerText = "⚠️ Network / server error. Please try again.";
+    }
+}
+</script>
+
+{% endblock %}

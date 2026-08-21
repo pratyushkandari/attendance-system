@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card large" style="max-width:700px; text-align:center;">
+    <h2>👁️ Live Multi-Face Attendance</h2>
+    <p style="color:#64748b; font-size:13px; margin-top:-5px;">
+        Real-time FaceNet Biometrics • CSRT Object Tracking • Active Eye-Blink Liveness Anti-Spoofing
+    </p>
+
+    <div class="video-wrapper">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+    </div>
+
+    <!-- Active Liveness & Scanner Status HUD -->
+    <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 18px; margin-top:12px; flex-wrap:wrap; gap:8px;">
+        <div style="text-align:left;">
+            <p id="result" style="margin:0; font-weight:600; font-size:14px; color:#1e293b;">
+                🔍 Scanning for registered students...
+            </p>
+        </div>
+        <div>
+            <span id="livenessBadge" style="background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:600; font-size:12px;">
+                👁️ Liveness: Blink Required
+            </span>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/recognize.js"></script>
+
+{% endblock %}

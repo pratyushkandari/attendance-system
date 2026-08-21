@@ -1,0 +1,27 @@
+{% extends "qr_base.html" %}
+{% block content %}
+
+<div class="card">
+    <div class="badge" style="background:#dcfce7; color:#166534;">
+        ✓ Student Identified
+    </div>
+
+    <h2>Confirm Attendance</h2>
+    <p style="color:#64748b; font-size:14px; margin-top:-6px;">
+        Please confirm your details below
+    </p>
+
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px; margin:16px 0; text-align:left;">
+        <p style="margin:0 0 6px 0; font-size:12px; color:#64748b; text-transform:uppercase; font-weight:600;">Student Name</p>
+        <h3 id="name" style="margin:0 0 12px 0; color:#0f172a; font-size:18px;">Loading...</h3>
+
+        <p style="margin:0 0 6px 0; font-size:12px; color:#64748b; text-transform:uppercase; font-weight:600;">Department & Year</p>
+        <p id="dept" style="margin:0; font-weight:600; color:#334155;">Loading...</p>
+    </div>
+
+    <button onclick="confirmAttendance()">Confirm & Submit Attendance</button>
+</div>
+
+<script src="/static/js/qr_verify.js"></script>
+
+{% endblock %}

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Smart Attendance System</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<nav>
+    <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:20px;">🤖</span>
+        <span style="font-weight:700; letter-spacing:0.5px;">AI Attendance System</span>
+    </div>
+
+    {% if session.get("admin") %}
+    <div>
+        <a href="/dashboard">📊 Dashboard</a>
+        <a href="/register_page">👤 Register</a>
+        <a href="/recognize_page">👁️ Face Attendance</a>
+        <a href="/qr_session">📱 Dynamic QR</a>
+        <a href="/records_page">📑 Records</a>
+        <a href="/logout" style="color:#fca5a5; font-weight:600;">🚪 Logout</a>
+    </div>
+    {% endif %}
+</nav>
+
+<div class="container">
+    {% block content %}{% endblock %}
+</div>
+
+</body>
+</html>

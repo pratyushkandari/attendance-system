@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card large" style="max-width:640px; text-align:center;">
+    <h2>👤 Biometric Face Enrollment</h2>
+    <h3 id="rollDisplay" style="color:#2563eb; margin:5px 0 15px 0; font-size:18px;"></h3>
+
+    <div class="video-wrapper">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+    </div>
+
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin:12px 0;">
+        <p id="status" style="margin:0; font-weight:500; font-size:14px; color:#334155;">Initializing camera...</p>
+    </div>
+
+    <button id="startBtn" style="padding:12px 28px; font-size:15px;">
+        📸 Start 5-Shot Face Capture
+    </button>
+</div>
+
+<script src="/static/js/capture.js"></script>
+
+{% endblock %}

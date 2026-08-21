@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card" style="max-width:480px;">
+    <h2>👤 Register New Student</h2>
+    <p style="color:#64748b; font-size:13px; text-align:center; margin-top:-6px;">
+        Fill in student information and proceed to biometric face capture
+    </p>
+
+    <div class="form-grid" style="display:grid; gap:12px; margin-top:16px;">
+        <input id="first" placeholder="First Name (e.g. John)" autocomplete="off">
+        <input id="last" placeholder="Last Name (e.g. Doe)" autocomplete="off">
+        <input id="department" placeholder="Department (e.g. CSE, ECE, ME)" autocomplete="off">
+        <input id="year" placeholder="Graduation Year (e.g. 2026)" autocomplete="off">
+        <input id="email" type="email" placeholder="student@example.com" autocomplete="off">
+    </div>
+
+    <button id="registerBtn" style="width:100%; margin-top:18px; padding:12px;">
+        🚀 Save & Proceed to Face Capture
+    </button>
+
+    <p id="msg" style="margin-top:14px; font-size:14px; text-align:center; font-weight:500;"></p>
+</div>
+
+<script src="/static/js/register.js"></script>
+
+{% endblock %}

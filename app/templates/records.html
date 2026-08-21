@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card large" style="max-width:760px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+        <h2 style="margin:0;">📑 Attendance Records Log</h2>
+        <button onclick="clearRecords()" style="background:#dc2626; padding:8px 16px; font-size:13px; margin:0;">
+            🗑 Clear All Records
+        </button>
+    </div>
+
+    <div style="overflow-x:auto;">
+        <table id="table">
+            <tr>
+                <td colspan="3" style="color:#64748b; padding:20px;">Loading attendance logs...</td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<script src="/static/js/records.js"></script>
+
+{% endblock %}

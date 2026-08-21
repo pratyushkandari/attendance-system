@@ -1,0 +1,3246 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interview Handbook — AI Face Recognition Attendance System</title>
+  <style>
+    /* ======================== CSS VARIABLES ======================== */
+    :root {
+      --bg: #f8f9fc;
+      --bg-card: #ffffff;
+      --bg-sidebar: #ffffff;
+      --bg-code: #1e1e2e;
+      --text: #1a1a2e;
+      --text-secondary: #64748b;
+      --text-code: #cdd6f4;
+      --border: #e2e8f0;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --accent-bg: #eef2ff;
+      --green: #22c55e;
+      --green-bg: #f0fdf4;
+      --yellow: #eab308;
+      --yellow-bg: #fefce8;
+      --red: #ef4444;
+      --red-bg: #fef2f2;
+      --blue: #3b82f6;
+      --blue-bg: #eff6ff;
+      --purple: #a855f7;
+      --purple-bg: #faf5ff;
+      --orange: #f97316;
+      --orange-bg: #fff7ed;
+      --shadow: 0 1px 3px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .06);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, .08);
+      --shadow-lg: 0 10px 30px rgba(0, 0, 0, .1);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --sidebar-w: 280px;
+      --transition: 250ms ease;
+      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+
+    [data-theme="dark"] {
+      --bg: #0f172a;
+      --bg-card: #1e293b;
+      --bg-sidebar: #1e293b;
+      --bg-code: #0f172a;
+      --text: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-code: #e2e8f0;
+      --border: #334155;
+      --accent-bg: #1e1b4b;
+      --green-bg: #052e16;
+      --yellow-bg: #422006;
+      --red-bg: #450a0a;
+      --blue-bg: #172554;
+      --purple-bg: #2e1065;
+      --orange-bg: #431407;
+      --shadow: 0 1px 3px rgba(0, 0, 0, .3);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, .3);
+      --shadow-lg: 0 10px 30px rgba(0, 0, 0, .4);
+    }
+
+    /* ======================== RESET & BASE ======================== */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 80px;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      transition: background var(--transition), color var(--transition);
+    }
+
+    /* ======================== SCROLL PROGRESS ======================== */
+    #progress-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--purple), var(--accent-light));
+      z-index: 10001;
+      transition: width 50ms linear;
+    }
+
+    /* ======================== TOPBAR ======================== */
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 56px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      z-index: 1000;
+      box-shadow: var(--shadow);
+      transition: background var(--transition), border var(--transition);
+    }
+
+    .topbar-title {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--accent);
+      margin-right: auto;
+    }
+
+    .topbar-title span {
+      color: var(--text);
+      font-weight: 400;
+      margin-left: 6px;
+    }
+
+    .topbar-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .topbar-actions button,
+    .topbar-actions label {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: .82rem;
+      color: var(--text);
+      transition: all var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .topbar-actions button:hover,
+    .topbar-actions label:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    #searchBox {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 12px;
+      font-size: .85rem;
+      background: var(--bg);
+      color: var(--text);
+      width: 200px;
+      transition: all var(--transition);
+      outline: none;
+    }
+
+    #searchBox:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, .15);
+    }
+
+    .hamburger {
+      display: none;
+      background: none;
+      border: none;
+      font-size: 1.3rem;
+      cursor: pointer;
+      color: var(--text);
+    }
+
+    /* ======================== SIDEBAR ======================== */
+    .sidebar {
+      position: fixed;
+      top: 56px;
+      left: 0;
+      bottom: 0;
+      width: var(--sidebar-w);
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px 0;
+      z-index: 999;
+      transition: transform var(--transition), background var(--transition);
+    }
+
+    .sidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .sidebar::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    .sidebar a {
+      display: block;
+      padding: 7px 20px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: .82rem;
+      border-left: 3px solid transparent;
+      transition: all var(--transition);
+    }
+
+    .sidebar a:hover,
+    .sidebar a.active {
+      color: var(--accent);
+      background: var(--accent-bg);
+      border-left-color: var(--accent);
+    }
+
+    .sidebar .sidebar-group {
+      padding: 10px 20px 4px;
+      font-size: .7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--text-secondary);
+    }
+
+    /* ======================== MAIN ======================== */
+    .main {
+      margin-left: var(--sidebar-w);
+      margin-top: 56px;
+      padding: 32px 40px 100px;
+      max-width: 900px;
+    }
+
+    /* ======================== SECTIONS ======================== */
+    .section {
+      margin-bottom: 32px;
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      transition: all var(--transition);
+    }
+
+    .section:hover {
+      box-shadow: var(--shadow-md);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      cursor: pointer;
+      user-select: none;
+      background: var(--bg-card);
+      transition: background var(--transition);
+    }
+
+    .section-header:hover {
+      background: var(--accent-bg);
+    }
+
+    .section-header h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-header .chevron {
+      font-size: .8rem;
+      transition: transform var(--transition);
+      color: var(--text-secondary);
+    }
+
+    .section-header .chevron.open {
+      transform: rotate(180deg);
+    }
+
+    .section-body {
+      padding: 0 20px 20px;
+      display: none;
+    }
+
+    .section-body.open {
+      display: block;
+      animation: fadeIn .3s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    h3 {
+      font-size: .95rem;
+      font-weight: 700;
+      margin: 20px 0 8px;
+      color: var(--accent);
+    }
+
+    h4 {
+      font-size: .88rem;
+      font-weight: 600;
+      margin: 14px 0 6px;
+    }
+
+    p,
+    li {
+      font-size: .88rem;
+    }
+
+    ul,
+    ol {
+      padding-left: 20px;
+      margin: 6px 0;
+    }
+
+    li {
+      margin-bottom: 4px;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 16px 0;
+    }
+
+    /* ======================== BADGES ======================== */
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+
+    .badge-green {
+      background: var(--green-bg);
+      color: var(--green);
+      border: 1px solid var(--green);
+    }
+
+    .badge-yellow {
+      background: var(--yellow-bg);
+      color: #a16207;
+      border: 1px solid var(--yellow);
+    }
+
+    .badge-red {
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid var(--red);
+    }
+
+    .badge-blue {
+      background: var(--blue-bg);
+      color: var(--blue);
+      border: 1px solid var(--blue);
+    }
+
+    .badge-purple {
+      background: var(--purple-bg);
+      color: var(--purple);
+      border: 1px solid var(--purple);
+    }
+
+    .badge-accent {
+      background: var(--accent-bg);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+
+    /* ======================== NOTE BOXES ======================== */
+    .note {
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: .84rem;
+      border-left: 4px solid;
+    }
+
+    .note-tip {
+      background: var(--green-bg);
+      border-color: var(--green);
+    }
+
+    .note-important {
+      background: var(--blue-bg);
+      border-color: var(--blue);
+    }
+
+    .note-warning {
+      background: var(--yellow-bg);
+      border-color: var(--yellow);
+    }
+
+    .note-interviewer {
+      background: var(--purple-bg);
+      border-color: var(--purple);
+    }
+
+    .note-mistake {
+      background: var(--red-bg);
+      border-color: var(--red);
+    }
+
+    .note strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* ======================== CODE BLOCKS ======================== */
+    .code-block {
+      position: relative;
+      background: var(--bg-code);
+      border-radius: var(--radius-sm);
+      margin: 10px 0;
+      overflow: hidden;
+    }
+
+    .code-block pre {
+      padding: 16px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: .8rem;
+      line-height: 1.6;
+      color: var(--text-code);
+      margin: 0;
+    }
+
+    .code-block .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(255, 255, 255, .1);
+      border: 1px solid rgba(255, 255, 255, .15);
+      color: #ccc;
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: .72rem;
+      transition: all var(--transition);
+    }
+
+    .code-block .copy-btn:hover {
+      background: rgba(255, 255, 255, .2);
+      color: #fff;
+    }
+
+    /* syntax colors */
+    .kw {
+      color: #c678dd;
+    }
+
+    .str {
+      color: #98c379;
+    }
+
+    .fn {
+      color: #61afef;
+    }
+
+    .cm {
+      color: #7f848e;
+      font-style: italic;
+    }
+
+    .num {
+      color: #d19a66;
+    }
+
+    .dec {
+      color: #e06c75;
+    }
+
+    .op {
+      color: #56b6c2;
+    }
+
+    /* ======================== TABLES ======================== */
+    .table-wrap {
+      overflow-x: auto;
+      margin: 10px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .82rem;
+      background: var(--bg-card);
+    }
+
+    th {
+      background: var(--accent-bg);
+      color: var(--accent);
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr:hover td {
+      background: var(--accent-bg);
+    }
+
+    /* ======================== API CARD ======================== */
+    .api-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin: 12px 0;
+      overflow: hidden;
+    }
+
+    .api-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: var(--bg);
+      font-size: .85rem;
+      font-weight: 600;
+    }
+
+    .method-badge {
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-size: .72rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .method-get {
+      background: var(--green);
+    }
+
+    .method-post {
+      background: var(--blue);
+    }
+
+    .method-delete {
+      background: var(--red);
+    }
+
+    .api-card-body {
+      padding: 12px 16px;
+      font-size: .84rem;
+    }
+
+    /* ======================== FLOW CARD ======================== */
+    .flow-cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 12px 0;
+    }
+
+    .flow-card {
+      flex: 1;
+      min-width: 120px;
+      background: var(--accent-bg);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      text-align: center;
+      font-size: .82rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    .flow-card::after {
+      content: '→';
+      position: absolute;
+      right: -14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1.1rem;
+      color: var(--accent);
+    }
+
+    .flow-card:last-child::after {
+      content: '';
+    }
+
+    /* ======================== BACK TO TOP ======================== */
+    #backToTop {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      opacity: 0;
+      visibility: hidden;
+      transition: all var(--transition);
+      z-index: 1001;
+    }
+
+    #backToTop.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    #backToTop:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    /* ======================== DIAGRAM ======================== */
+    .diagram {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 20px;
+      margin: 12px 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+
+    .diagram svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .diagram text {
+      font-family: var(--font);
+    }
+
+    /* ======================== RESPONSIVE ======================== */
+    @media (max-width: 900px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+        box-shadow: var(--shadow-lg);
+      }
+
+      .main {
+        margin-left: 0;
+        padding: 24px 16px 80px;
+      }
+
+      .hamburger {
+        display: block;
+      }
+
+      #searchBox {
+        width: 120px;
+      }
+    }
+
+    @media (max-width: 500px) {
+      .topbar-title span {
+        display: none;
+      }
+
+      #searchBox {
+        width: 90px;
+      }
+
+      .flow-cards {
+        flex-direction: column;
+      }
+
+      .flow-card::after {
+        content: '↓';
+        right: 50%;
+        top: auto;
+        bottom: -14px;
+        transform: translateX(50%);
+      }
+    }
+
+    /* ======================== UTILITY ======================== */
+    .mt-sm {
+      margin-top: 8px;
+    }
+
+    .mt {
+      margin-top: 16px;
+    }
+
+    .mb {
+      margin-bottom: 16px;
+    }
+
+    .text-muted {
+      color: var(--text-secondary);
+    }
+
+    .text-accent {
+      color: var(--accent);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 600px) {
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Progress Bar -->
+  <div id="progress-bar"></div>
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+    <div class="topbar-title">📘 Interview Handbook <span>— AI Attendance System</span></div>
+    <div class="topbar-actions">
+      <input type="text" id="searchBox" placeholder="🔍 Search..." oninput="liveSearch(this.value)">
+      <button onclick="expandAll()">Expand All</button>
+      <button onclick="collapseAll()">Collapse All</button>
+      <button onclick="toggleTheme()" id="themeBtn">🌙 Dark</button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-group">Core</div>
+    <a href="#s1">1. Project Overview</a>
+    <a href="#s2">2. Architecture</a>
+    <a href="#s3">3. Folder Structure</a>
+    <a href="#s4">4. Technologies Used</a>
+    <a href="#s5">5. Libraries</a>
+    <div class="sidebar-group">AI/ML</div>
+    <a href="#s6">6. AI / Machine Learning</a>
+    <div class="sidebar-group">Data</div>
+    <a href="#s7">7. Database</a>
+    <div class="sidebar-group">Backend & Frontend</div>
+    <a href="#s8">8. Backend</a>
+    <a href="#s9">9. Frontend</a>
+    <a href="#s10">10. APIs</a>
+    <div class="sidebar-group">Deep Dive</div>
+    <a href="#s11">11. Code Walkthrough</a>
+    <a href="#s12">12. Design Decisions</a>
+    <a href="#s13">13. Security</a>
+    <a href="#s14">14. Performance</a>
+    <a href="#s15">15. Testing</a>
+    <a href="#s16">16. Deployment</a>
+    <div class="sidebar-group">System Design</div>
+    <a href="#s17">17. System Design</a>
+    <div class="sidebar-group">Interview Prep</div>
+    <a href="#s18">18. HR + Project Discussion</a>
+    <a href="#s19">19. TCS Interview Questions</a>
+    <a href="#s20">20. Rapid Revision Sheet</a>
+    <a href="#s21">21. Cheat Sheet</a>
+    <a href="#s22">22. Viva Questions</a>
+    <a href="#s23">23. Cross Questions & Defense</a>
+    <a href="#s24">24. Final Summary</a>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main" id="mainContent">
+
+    <!-- ====================== SECTION 1 ====================== -->
+    <div class="section" id="s1">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>📋 1. Project Overview</h2>
+        <span class="chevron open">▼</span>
+      </div>
+      <div class="section-body open">
+
+        <h3>Project Name</h3>
+        <p><strong>Automated Attendance System</strong> — An AI-powered face recognition and QR-code based attendance
+          management system.</p>
+
+        <h3>Elevator Pitch (30 seconds)</h3>
+        <div class="note note-tip"><strong>💡 30-Second Pitch</strong>
+          "Our project is an AI-powered Attendance System that uses FaceNet deep learning to automatically recognize
+          registered students via webcam and mark their attendance. It also offers a QR code fallback method. Built with
+          Flask, PostgreSQL, and PyTorch, it eliminates proxy attendance and manual roll calls entirely."
+        </div>
+
+        <h3>1-Minute Explanation</h3>
+        <p>This system solves the traditional attendance problem in educational institutions. Admins log in securely,
+          register students with their details, capture their face embeddings using the MTCNN + FaceNet
+          (InceptionResnetV1) pipeline, and store 512-dimensional face vectors in PostgreSQL. During attendance, the
+          webcam feed is processed frame-by-frame — faces are detected via MTCNN, embeddings are extracted using
+          FaceNet, and cosine similarity is used to match against stored student embeddings. If the similarity score
+          exceeds 0.70, attendance is automatically marked. A QR code attendance path is also available for mobile
+          devices.</p>
+
+        <h3>3-Minute Explanation</h3>
+        <p>The system is a full-stack Flask web application with three Blueprints: <strong>main</strong> (auth +
+          navigation), <strong>student</strong> (registration + face capture), and <strong>attendance</strong>
+          (recognition + records). The AI pipeline uses <code>facenet-pytorch</code>'s MTCNN for multi-task face
+          detection and InceptionResnetV1 pre-trained on VGGFace2 for generating 512-dimensional face embeddings. During
+          registration, 5 face captures are averaged into a single embedding stored as JSON in PostgreSQL. During
+          recognition, OpenCV's CSRT tracker maintains face positions between detection frames (every 10th frame runs
+          MTCNN, rest use tracking) to keep the UI smooth. Multiple safety filters are applied: brightness checks,
+          confidence thresholds (0.95 for MTCNN, 0.70 for cosine similarity), minimum face size (50×50px), flat surface
+          rejection, and embedding norm validation. Admin authentication uses Werkzeug password hashing with a 3-attempt
+          lockout mechanism. The QR flow generates QR codes pointing to a mobile page where students enter their roll
+          number to mark attendance.</p>
+
+        <h3>5-Minute Explanation</h3>
+        <p>Extends the 3-minute version with: The Flask application factory pattern (<code>create_app()</code>)
+          initializes the app, configures SQLAlchemy with PostgreSQL, imports models (Admin, Student, Attendance), and
+          registers three Blueprints. Database schema uses three tables: <code>admins</code> (id, email,
+          hashed_password), <code>students</code> (id, roll, first_name, last_name, department, year, email, embedding
+          as TEXT), and <code>attendance</code> (id, roll, method, timestamp). The roll number is auto-generated as
+          <code>{year}{DEPT}{sequential_count}</code>. IST timezone is handled manually via UTC+5:30 offset. The
+          frontend uses vanilla HTML/CSS/JavaScript with Jinja2 templates, Canvas API for drawing face bounding boxes,
+          and <code>getUserMedia</code> for webcam access. Client-side tracking smooths bounding boxes using linear
+          interpolation (alpha=0.65–0.75). Attendance is restricted to once per student per day via database-level date
+          filtering. Records are grouped by date with latest-first sorting. Cache-control headers prevent back-button
+          access to dashboard after logout.
+        </p>
+
+        <h3>Problem Statement</h3>
+        <p>Manual attendance systems in educational institutions are slow, error-prone, and susceptible to proxy
+          attendance. This project automates attendance marking using facial recognition AI, eliminating human error and
+          fraud.</p>
+
+        <h3>Motivation</h3>
+        <ul>
+          <li>Eliminate proxy attendance in colleges and universities</li>
+          <li>Save time compared to manual roll calls</li>
+          <li>Provide an accessible alternative (QR code) when camera-based recognition isn't feasible</li>
+          <li>Demonstrate practical application of deep learning in real-world systems</li>
+        </ul>
+
+        <h3>Use Cases</h3>
+        <ul>
+          <li>College classroom attendance</li>
+          <li>Lab session tracking</li>
+          <li>Event participation verification</li>
+          <li>Corporate meeting attendance</li>
+        </ul>
+
+        <h3>Target Users</h3>
+        <ul>
+          <li><strong>Admins:</strong> Teachers/professors who register students and view attendance</li>
+          <li><strong>Students:</strong> Who get their faces registered and attendance marked automatically or via QR
+          </li>
+        </ul>
+
+        <h3>Features</h3>
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Feature</th>
+              <th>Method</th>
+              <th>Priority</th>
+            </tr>
+            <tr>
+              <td>Admin Login/Register</td>
+              <td>Werkzeug hash + session</td>
+              <td><span class="badge badge-green">🟢 Core</span></td>
+            </tr>
+            <tr>
+              <td>Student Registration</td>
+              <td>Form → API → PostgreSQL</td>
+              <td><span class="badge badge-green">🟢 Core</span></td>
+            </tr>
+            <tr>
+              <td>Face Capture & Embedding</td>
+              <td>MTCNN + FaceNet</td>
+              <td><span class="badge badge-green">🟢 Core</span></td>
+            </tr>
+            <tr>
+              <td>Face Recognition Attendance</td>
+              <td>Cosine similarity ≥ 0.70</td>
+              <td><span class="badge badge-green">🟢 Core</span></td>
+            </tr>
+            <tr>
+              <td>QR Code Attendance</td>
+              <td>QR → mobile → verify → mark</td>
+              <td><span class="badge badge-yellow">🟡 Secondary</span></td>
+            </tr>
+            <tr>
+              <td>Dashboard Analytics</td>
+              <td>Total/Present/Absent counts</td>
+              <td><span class="badge badge-green">🟢 Core</span></td>
+            </tr>
+            <tr>
+              <td>Attendance Records</td>
+              <td>Grouped by date, sorted</td>
+              <td><span class="badge badge-green">🟢 Core</span></td>
+            </tr>
+            <tr>
+              <td>Account Lockout</td>
+              <td>3 failed attempts</td>
+              <td><span class="badge badge-yellow">🟡 Security</span></td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>Limitations</h3>
+        <ul>
+          <li>No JWT — uses server-side Flask sessions</li>
+          <li>Secret key is hardcoded (<code>"secret123"</code>)</li>
+          <li>No role-based access control (single admin role only)</li>
+          <li>Linear scan of all students for matching — O(n) per face per frame</li>
+          <li>No liveness detection — vulnerable to photo spoofing</li>
+          <li>QR flow doesn't verify identity (any student can enter any roll number)</li>
+        </ul>
+
+        <h3>Future Scope</h3>
+        <ul>
+          <li>Add liveness detection (blink detection, 3D depth)</li>
+          <li>Implement FAISS/Annoy for O(log n) embedding search</li>
+          <li>Add JWT-based token authentication</li>
+          <li>Deploy with Docker + cloud (AWS/GCP)</li>
+          <li>Add email notifications for absent students</li>
+          <li>Implement role-based access control</li>
+        </ul>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 2 ====================== -->
+    <div class="section" id="s2">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🏗️ 2. Architecture</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Overall Architecture</h3>
+        <p>Monolithic Flask web application with an embedded AI inference pipeline. No microservices, no message queues,
+          no separate API gateway.</p>
+
+        <div class="flow-cards">
+          <div class="flow-card">👤 Browser<br><small>HTML/JS/CSS</small></div>
+          <div class="flow-card">🌐 Flask Server<br><small>Blueprints</small></div>
+          <div class="flow-card">🧠 AI Pipeline<br><small>MTCNN + FaceNet</small></div>
+          <div class="flow-card">🗄️ PostgreSQL<br><small>SQLAlchemy ORM</small></div>
+        </div>
+
+        <h3>Architecture Diagram</h3>
+        <div class="diagram">
+          <svg viewBox="0 0 800 420" xmlns="http://www.w3.org/2000/svg">
+            <!-- Browser -->
+            <rect x="20" y="30" width="160" height="80" rx="12" fill="#eef2ff" stroke="#6366f1" stroke-width="2" />
+            <text x="100" y="62" text-anchor="middle" font-size="13" font-weight="bold" fill="#6366f1">Browser
+              Client</text>
+            <text x="100" y="82" text-anchor="middle" font-size="11" fill="#64748b">HTML / JS / Canvas</text>
+            <text x="100" y="97" text-anchor="middle" font-size="11" fill="#64748b">getUserMedia</text>
+
+            <!-- Arrow -->
+            <line x1="180" y1="70" x2="240" y2="70" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)" />
+            <text x="210" y="60" text-anchor="middle" font-size="9" fill="#64748b">JSON/HTTP</text>
+
+            <!-- Flask -->
+            <rect x="240" y="10" width="200" height="120" rx="12" fill="#f0fdf4" stroke="#22c55e" stroke-width="2" />
+            <text x="340" y="35" text-anchor="middle" font-size="13" font-weight="bold" fill="#22c55e">Flask
+              Server</text>
+            <text x="340" y="55" text-anchor="middle" font-size="10" fill="#64748b">main_bp (Auth + Pages)</text>
+            <text x="340" y="70" text-anchor="middle" font-size="10" fill="#64748b">student_bp (Register + Face)</text>
+            <text x="340" y="85" text-anchor="middle" font-size="10" fill="#64748b">attendance_bp (Recognize)</text>
+            <text x="340" y="105" text-anchor="middle" font-size="10" fill="#64748b">Jinja2 Templates</text>
+
+            <!-- Arrow to AI -->
+            <line x1="340" y1="130" x2="340" y2="180" stroke="#a855f7" stroke-width="2" marker-end="url(#arrow)" />
+
+            <!-- AI Pipeline -->
+            <rect x="240" y="180" width="200" height="100" rx="12" fill="#faf5ff" stroke="#a855f7" stroke-width="2" />
+            <text x="340" y="205" text-anchor="middle" font-size="13" font-weight="bold" fill="#a855f7">AI
+              Pipeline</text>
+            <text x="340" y="225" text-anchor="middle" font-size="10" fill="#64748b">MTCNN (Face Detection)</text>
+            <text x="340" y="242" text-anchor="middle" font-size="10" fill="#64748b">InceptionResnetV1
+              (Embedding)</text>
+            <text x="340" y="259" text-anchor="middle" font-size="10" fill="#64748b">Cosine Similarity (Matching)</text>
+
+            <!-- Arrow to DB -->
+            <line x1="440" y1="70" x2="540" y2="70" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow)" />
+
+            <!-- PostgreSQL -->
+            <rect x="540" y="20" width="200" height="100" rx="12" fill="#eff6ff" stroke="#3b82f6" stroke-width="2" />
+            <text x="640" y="48" text-anchor="middle" font-size="13" font-weight="bold" fill="#3b82f6">PostgreSQL</text>
+            <text x="640" y="68" text-anchor="middle" font-size="10" fill="#64748b">admins table</text>
+            <text x="640" y="83" text-anchor="middle" font-size="10" fill="#64748b">students table (+ embeddings)</text>
+            <text x="640" y="98" text-anchor="middle" font-size="10" fill="#64748b">attendance table</text>
+
+            <!-- QR External -->
+            <rect x="560" y="200" width="180" height="70" rx="12" fill="#fff7ed" stroke="#f97316" stroke-width="2" />
+            <text x="650" y="228" text-anchor="middle" font-size="13" font-weight="bold" fill="#f97316">QR Code
+              API</text>
+            <text x="650" y="248" text-anchor="middle" font-size="10" fill="#64748b">api.qrserver.com (external)</text>
+
+            <!-- OpenCV Tracker -->
+            <rect x="20" y="200" width="180" height="70" rx="12" fill="#fefce8" stroke="#eab308" stroke-width="2" />
+            <text x="110" y="228" text-anchor="middle" font-size="13" font-weight="bold" fill="#a16207">OpenCV
+              Tracker</text>
+            <text x="110" y="248" text-anchor="middle" font-size="10" fill="#64748b">CSRT (between detections)</text>
+
+            <line x1="200" y1="235" x2="240" y2="235" stroke="#a16207" stroke-width="2" marker-end="url(#arrow)" />
+
+            <!-- Arrow defs -->
+            <defs>
+              <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+                <path d="M0,0 L10,4 L0,8 Z" fill="#64748b" />
+              </marker>
+            </defs>
+
+            <!-- Request Lifecycle -->
+            <rect x="20" y="310" width="760" height="90" rx="12" fill="var(--bg-card,#fff)" stroke="#e2e8f0"
+              stroke-width="1" />
+            <text x="400" y="335" text-anchor="middle" font-size="12" font-weight="bold" fill="#6366f1">Request
+              Lifecycle (Face Attendance)</text>
+            <text x="400" y="358" text-anchor="middle" font-size="10" fill="#64748b">Browser captures frame → base64
+              JPEG → POST /recognize_with_box → MTCNN detects faces →</text>
+            <text x="400" y="374" text-anchor="middle" font-size="10" fill="#64748b">FaceNet extracts embeddings →
+              cosine similarity vs all students → CSRT tracker updates →</text>
+            <text x="400" y="390" text-anchor="middle" font-size="10" fill="#64748b">JSON response with boxes + rolls →
+              Canvas draws boxes → if score > 0.75 → POST /mark_attendance</text>
+          </svg>
+        </div>
+
+        <h3>End-to-End Execution Flow</h3>
+        <div class="flow-cards">
+          <div class="flow-card">1️⃣ Admin Login</div>
+          <div class="flow-card">2️⃣ Register Student</div>
+          <div class="flow-card">3️⃣ Capture 5 Faces</div>
+          <div class="flow-card">4️⃣ Average Embedding</div>
+          <div class="flow-card">5️⃣ Store in DB</div>
+        </div>
+        <div class="flow-cards mt-sm">
+          <div class="flow-card">6️⃣ Open Recognize</div>
+          <div class="flow-card">7️⃣ Webcam Feed</div>
+          <div class="flow-card">8️⃣ MTCNN Detect</div>
+          <div class="flow-card">9️⃣ FaceNet Embed</div>
+          <div class="flow-card">🔟 Match & Mark</div>
+        </div>
+
+        <div class="note note-interviewer"><strong>🎤 Interviewer's Perspective</strong>
+          "Explain the request lifecycle of a face recognition request." — Walk through: Browser → base64 frame → POST
+          to Flask → BGR→RGB conversion → MTCNN detection → FaceNet embedding → cosine similarity loop → threshold check
+          → CSRT tracker init → JSON response → Canvas rendering → attendance marking.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 3 ====================== -->
+    <div class="section" id="s3">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>📁 3. Folder Structure</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre>attendance/
+├── run.py                    <span class="cm"># Entry point — creates app, runs Flask server</span>
+├── requirements.txt          <span class="cm"># Python dependencies</span>
+├── seed.sql                  <span class="cm"># Database schema + sample data</span>
+├── venv/                     <span class="cm"># Virtual environment (ignored)</span>
+└── app/
+    ├── __init__.py            <span class="cm"># App factory — create_app()</span>
+    ├── config.py              <span class="cm"># Config class (DB URI, secret key)</span>
+    ├── extensions.py          <span class="cm"># SQLAlchemy instance</span>
+    ├── ai/
+    │   ├── comparator.py      <span class="cm"># compare_embeddings() with threshold</span>
+    │   ├── face_utils.py      <span class="cm"># cosine_similarity() helper</span>
+    │   └── facenet_model.py   <span class="cm"># MTCNN + InceptionResnetV1 init</span>
+    ├── models/
+    │   ├── __init__.py        <span class="cm"># Exports Admin, Student, Attendance</span>
+    │   ├── admin.py           <span class="cm"># Admin model (id, email, password)</span>
+    │   └── student.py         <span class="cm"># Student + Attendance models</span>
+    ├── routes/
+    │   ├── main.py            <span class="cm"># Auth + page routes (main_bp)</span>
+    │   ├── student.py         <span class="cm"># Registration + face capture (student_bp)</span>
+    │   └── attendance.py      <span class="cm"># Recognition + records (attendance_bp)</span>
+    ├── static/
+    │   ├── css/style.css      <span class="cm"># Global stylesheet</span>
+    │   ├── js/
+    │   │   ├── dashboard.js   <span class="cm"># Dashboard data loading + clear</span>
+    │   │   ├── register.js    <span class="cm"># Student registration form handler</span>
+    │   │   ├── capture.js     <span class="cm"># Face capture with tracking</span>
+    │   │   ├── recognize.js   <span class="cm"># Real-time face attendance</span>
+    │   │   ├── records.js     <span class="cm"># Attendance records display</span>
+    │   │   ├── qr_mobile.js   <span class="cm"># QR — roll number input</span>
+    │   │   └── qr_verify.js   <span class="cm"># QR — student verify + mark</span>
+    │   ├── faces/             <span class="cm"># Stored face images (empty dir)</span>
+    │   └── qr/                <span class="cm"># QR assets (empty dir)</span>
+    └── templates/
+        ├── base.html          <span class="cm"># Base layout with nav</span>
+        ├── admin_login.html   <span class="cm"># Login/Register form</span>
+        ├── dashboard.html     <span class="cm"># Stats dashboard</span>
+        ├── register.html      <span class="cm"># Student registration form</span>
+        ├── capture.html       <span class="cm"># Face capture page</span>
+        ├── recognize.html     <span class="cm"># Face recognition page</span>
+        ├── records.html       <span class="cm"># Attendance records table</span>
+        ├── qr_session.html    <span class="cm"># QR display for admin</span>
+        ├── qr_base.html       <span class="cm"># QR mobile base layout</span>
+        ├── qr_mobile.html     <span class="cm"># QR mobile roll input</span>
+        ├── qr_verify.html     <span class="cm"># QR verify student</span>
+        └── qr_result.html     <span class="cm"># QR success page</span></pre>
+        </div>
+
+        <h3>File Communication Map</h3>
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>File</th>
+              <th>Communicates With</th>
+              <th>How</th>
+            </tr>
+            <tr>
+              <td>run.py</td>
+              <td>app/__init__.py</td>
+              <td>Calls <code>create_app()</code></td>
+            </tr>
+            <tr>
+              <td>__init__.py</td>
+              <td>config.py, extensions.py, models/, routes/</td>
+              <td>Imports and configures all modules</td>
+            </tr>
+            <tr>
+              <td>routes/attendance.py</td>
+              <td>ai/ (MTCNN, FaceNet), models/student.py</td>
+              <td>Uses AI models for inference, ORM for DB</td>
+            </tr>
+            <tr>
+              <td>routes/student.py</td>
+              <td>routes/attendance.py</td>
+              <td>Imports <code>get_embedding</code> and <code>mtcnn</code></td>
+            </tr>
+            <tr>
+              <td>JS files</td>
+              <td>routes/ (Flask endpoints)</td>
+              <td>Fetch API (JSON over HTTP)</td>
+            </tr>
+            <tr>
+              <td>Templates</td>
+              <td>base.html / qr_base.html</td>
+              <td>Jinja2 template inheritance</td>
+            </tr>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 4 ====================== -->
+    <div class="section" id="s4">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🛠️ 4. Technologies Used</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Technology</th>
+              <th>Version</th>
+              <th>Purpose</th>
+              <th>Interview Priority</th>
+            </tr>
+            <tr>
+              <td><span class="badge badge-green">Python</span></td>
+              <td>3.x</td>
+              <td>Backend language</td>
+              <td><span class="badge badge-green">🟢 Frequently Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-green">Flask</span></td>
+              <td>2.3.3</td>
+              <td>Web framework</td>
+              <td><span class="badge badge-green">🟢 Frequently Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-blue">PostgreSQL</span></td>
+              <td>—</td>
+              <td>Relational database</td>
+              <td><span class="badge badge-green">🟢 Frequently Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-purple">PyTorch</span></td>
+              <td>≥2.0</td>
+              <td>Deep learning framework</td>
+              <td><span class="badge badge-green">🟢 Frequently Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-purple">FaceNet-PyTorch</span></td>
+              <td>2.5.3</td>
+              <td>Face detection + recognition</td>
+              <td><span class="badge badge-green">🟢 Frequently Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-yellow">OpenCV</span></td>
+              <td>4.9.0</td>
+              <td>Image processing + tracking</td>
+              <td><span class="badge badge-green">🟢 Frequently Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-accent">SQLAlchemy</span></td>
+              <td>3.1.1</td>
+              <td>ORM for database</td>
+              <td><span class="badge badge-yellow">🟡 Sometimes Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-accent">Jinja2</span></td>
+              <td>Built-in</td>
+              <td>HTML templating</td>
+              <td><span class="badge badge-yellow">🟡 Sometimes Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-accent">NumPy</span></td>
+              <td>1.26.4</td>
+              <td>Array math + cosine similarity</td>
+              <td><span class="badge badge-yellow">🟡 Sometimes Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-accent">Pillow</span></td>
+              <td>10.2.0</td>
+              <td>Image format conversion</td>
+              <td><span class="badge badge-red">🔴 Rarely Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-accent">ReportLab</span></td>
+              <td>4.0.9</td>
+              <td>PDF generation (listed but not actively used in routes)</td>
+              <td><span class="badge badge-red">🔴 Rarely Asked</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-accent">HTML/CSS/JS</span></td>
+              <td>—</td>
+              <td>Frontend (vanilla, no framework)</td>
+              <td><span class="badge badge-green">🟢 Frequently Asked</span></td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>Why Flask over Django?</h3>
+        <ul>
+          <li><strong>Lightweight:</strong> Flask is a micro-framework — perfect for this project's scope</li>
+          <li><strong>Flexibility:</strong> No enforced project structure; Blueprint pattern chosen deliberately</li>
+          <li><strong>Faster prototyping:</strong> Less boilerplate than Django</li>
+          <li><strong>Trade-off:</strong> Django provides admin panel, ORM migrations, auth out-of-box; Flask requires
+            manual setup</li>
+        </ul>
+
+        <h3>Why PostgreSQL over MySQL/SQLite?</h3>
+        <ul>
+          <li><strong>TEXT columns:</strong> Efficient storage of large JSON embedding strings (~4KB per student)</li>
+          <li><strong>Robustness:</strong> ACID compliance, concurrent connections</li>
+          <li><strong>Production-ready:</strong> Better than SQLite for multi-user scenarios</li>
+        </ul>
+
+        <h3>Why PyTorch over TensorFlow?</h3>
+        <ul>
+          <li><strong>FaceNet-PyTorch library:</strong> The chosen library is PyTorch-native</li>
+          <li><strong>Dynamic computation graph:</strong> Easier debugging than TF 1.x static graphs</li>
+          <li><strong>Research-friendly:</strong> Dominant in academic face recognition research</li>
+        </ul>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 5 ====================== -->
+    <div class="section" id="s5">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>📦 5. Libraries</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Library</th>
+              <th>Purpose in Project</th>
+              <th>Key Functions Used</th>
+              <th>Alternative</th>
+            </tr>
+            <tr>
+              <td>Flask</td>
+              <td>Web server, routing, sessions</td>
+              <td>Blueprint, render_template, jsonify, session, request</td>
+              <td>Django, FastAPI</td>
+            </tr>
+            <tr>
+              <td>Flask-SQLAlchemy</td>
+              <td>ORM wrapper over SQLAlchemy</td>
+              <td>db.Model, db.Column, db.session, query.filter_by</td>
+              <td>Raw SQL, Peewee</td>
+            </tr>
+            <tr>
+              <td>psycopg2-binary</td>
+              <td>PostgreSQL driver for Python</td>
+              <td>Used implicitly by SQLAlchemy</td>
+              <td>asyncpg, pg8000</td>
+            </tr>
+            <tr>
+              <td>facenet-pytorch</td>
+              <td>Face detection (MTCNN) + embedding (InceptionResnetV1)</td>
+              <td>MTCNN(), InceptionResnetV1(pretrained='vggface2')</td>
+              <td>dlib, DeepFace, InsightFace</td>
+            </tr>
+            <tr>
+              <td>torch</td>
+              <td>Tensor operations, GPU support, model inference</td>
+              <td>torch.cuda.is_available(), .eval(), .detach()</td>
+              <td>TensorFlow, JAX</td>
+            </tr>
+            <tr>
+              <td>opencv-python</td>
+              <td>Image decode/encode, BGR↔RGB, CSRT tracking</td>
+              <td>cv2.imdecode, cv2.cvtColor, cv2.TrackerCSRT_create</td>
+              <td>scikit-image, Pillow</td>
+            </tr>
+            <tr>
+              <td>numpy</td>
+              <td>Array math, cosine similarity, embedding averaging</td>
+              <td>np.dot, np.linalg.norm, np.mean, np.frombuffer</td>
+              <td>scipy (for cosine)</td>
+            </tr>
+            <tr>
+              <td>Pillow</td>
+              <td>PIL Image conversion for MTCNN input</td>
+              <td>Image.fromarray()</td>
+              <td>opencv (already used)</td>
+            </tr>
+            <tr>
+              <td>reportlab</td>
+              <td>PDF generation (declared in requirements, no active usage found in routes)</td>
+              <td>—</td>
+              <td>WeasyPrint, fpdf</td>
+            </tr>
+            <tr>
+              <td>werkzeug</td>
+              <td>Password hashing (bundled with Flask)</td>
+              <td>generate_password_hash, check_password_hash</td>
+              <td>bcrypt, passlib</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="note note-interviewer"><strong>🎤 Interview Q: "Why facenet-pytorch instead of dlib or
+            DeepFace?"</strong>
+          Answer: facenet-pytorch provides both detection (MTCNN) and recognition (InceptionResnetV1) in a single
+          package with PyTorch integration. It's pre-trained on VGGFace2 (3.3M face images), giving high accuracy
+          without custom training. dlib's face_recognition library uses a different architecture and is slower. DeepFace
+          is a wrapper library with more overhead.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 6 ====================== -->
+    <div class="section" id="s6">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🧠 6. AI / Machine Learning</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Model Architecture</h3>
+        <p>The project uses <strong>two models</strong> from the <code>facenet-pytorch</code> library:</p>
+
+        <div class="grid-2">
+          <div class="note note-important"><strong>MTCNN (Multi-task Cascaded CNN)</strong>
+            <ul>
+              <li><strong>Purpose:</strong> Face detection + alignment</li>
+              <li><strong>Architecture:</strong> 3-stage cascade: P-Net → R-Net → O-Net</li>
+              <li><strong>Output:</strong> Bounding boxes + 5 facial landmarks</li>
+              <li><strong>Config in project:</strong> <code>keep_all=True</code>, <code>min_face_size=20</code>,
+                thresholds <code>[0.4, 0.5, 0.5]</code></li>
+            </ul>
+          </div>
+          <div class="note note-important"><strong>InceptionResnetV1</strong>
+            <ul>
+              <li><strong>Purpose:</strong> Face embedding extraction</li>
+              <li><strong>Architecture:</strong> Inception-ResNet hybrid (deep CNN)</li>
+              <li><strong>Pre-trained on:</strong> VGGFace2 (3.3M images, 9131 subjects)</li>
+              <li><strong>Output:</strong> 512-dimensional embedding vector</li>
+              <li><strong>Mode:</strong> <code>.eval()</code> — inference only, no training</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Dataset</h3>
+        <p>The project uses a <strong>pre-trained model</strong> (transfer learning). No custom dataset or training is
+          performed. The VGGFace2 dataset was used to pre-train InceptionResnetV1 before the library was published.</p>
+
+        <h3>Training</h3>
+        <p><strong>Not performed in this project.</strong> The model is used in inference-only mode
+          (<code>.eval()</code>). The original training was done by the facenet-pytorch library authors using triplet
+          loss on VGGFace2.</p>
+
+        <h3>Inference Pipeline</h3>
+        <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><span class="cm"># Step 1: Receive base64 image from browser</span>
+img = base64.b64decode(image_data)
+frame = cv2.imdecode(np.frombuffer(img, np.uint8), cv2.IMREAD_COLOR)
+
+<span class="cm"># Step 2: BGR → RGB conversion (OpenCV uses BGR, MTCNN expects RGB)</span>
+rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+<span class="cm"># Step 3: MTCNN detects face bounding boxes</span>
+boxes, probs = mtcnn.detect(rgb)
+
+<span class="cm"># Step 4: Crop face region, convert to PIL Image</span>
+face = frame[y:y+h, x:x+w]
+img = Image.fromarray(cv2.cvtColor(face, cv2.COLOR_BGR2RGB))
+
+<span class="cm"># Step 5: MTCNN extracts aligned face tensor (160×160)</span>
+face_tensor = mtcnn(img)  <span class="cm"># Returns [3, 160, 160] tensor</span>
+
+<span class="cm"># Step 6: InceptionResnetV1 generates 512-d embedding</span>
+emb = resnet(face_tensor.unsqueeze(0))  <span class="cm"># [1, 512]</span>
+embedding = emb.detach().numpy()[0]      <span class="cm"># [512,]</span></pre>
+        </div>
+
+        <h3>Preprocessing</h3>
+        <ul>
+          <li><strong>Color conversion:</strong> BGR (OpenCV) → RGB (MTCNN requirement)</li>
+          <li><strong>Face alignment:</strong> MTCNN automatically aligns faces using 5 landmarks</li>
+          <li><strong>Resize:</strong> MTCNN outputs 160×160 pixel face crops</li>
+          <li><strong>Normalization:</strong> Done internally by MTCNN (pixel values → [-1, 1])</li>
+        </ul>
+
+        <h3>Embeddings</h3>
+        <p>A face embedding is a 512-dimensional float vector that represents a face's unique identity in a
+          high-dimensional space. Faces of the same person cluster together; different people are far apart.</p>
+        <ul>
+          <li><strong>Dimension:</strong> 512</li>
+          <li><strong>Storage:</strong> JSON-serialized string in PostgreSQL TEXT column (~4KB)</li>
+          <li><strong>Registration:</strong> 5 captures → 5 embeddings → averaged into 1 representative embedding</li>
+        </ul>
+
+        <h3>Cosine Similarity</h3>
+        <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><span class="kw">def</span> <span class="fn">cosine_similarity</span>(a, b):
+    <span class="kw">return</span> np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))</pre>
+        </div>
+        <ul>
+          <li><strong>Range:</strong> [-1, 1] — where 1 means identical, 0 means orthogonal</li>
+          <li><strong>Threshold:</strong> 0.70 (match), 0.75 (auto-attendance in capture.js)</li>
+          <li><strong>Why cosine over Euclidean:</strong> Cosine is scale-invariant; measures direction, not magnitude.
+            Robust to variations in lighting/embedding magnitude.</li>
+        </ul>
+
+        <h3>CSRT Tracker (OpenCV)</h3>
+        <p>Used between MTCNN detection frames (MTCNN runs every 10th frame). CSRT (Channel and Spatial Reliability
+          Tracking) maintains bounding box positions for smooth UI without re-running expensive neural network
+          inference.</p>
+
+        <h3>Safety Filters in the AI Pipeline</h3>
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Filter</th>
+              <th>Value</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td>Brightness check</td>
+              <td>
+                < 40 mean</td>
+              <td>Reject low-light frames</td>
+            </tr>
+            <tr>
+              <td>MTCNN confidence</td>
+              <td>
+                < 0.95</td>
+              <td>Reject uncertain detections</td>
+            </tr>
+            <tr>
+              <td>Min face size</td>
+              <td>50×50 px</td>
+              <td>Reject tiny/far faces</td>
+            </tr>
+            <tr>
+              <td>Flat surface (std dev)</td>
+              <td>
+                < 20</td>
+              <td>Reject non-face regions</td>
+            </tr>
+            <tr>
+              <td>Embedding norm</td>
+              <td>
+                < 0.5</td>
+              <td>Reject weak embeddings</td>
+            </tr>
+            <tr>
+              <td>Cosine similarity</td>
+              <td>
+                < 0.70</td>
+              <td>Reject poor matches</td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>AI Concepts Not Used in This Project</h3>
+        <ul>
+          <li><strong>Custom Training / Fine-Tuning:</strong> Not used — pre-trained model only</li>
+          <li><strong>RAG / LLM / Prompt Engineering:</strong> Not used — this is a computer vision project</li>
+          <li><strong>Classification / Regression heads:</strong> Not used — embedding comparison via similarity</li>
+          <li><strong>Tokenization:</strong> Not used — no NLP component</li>
+          <li><strong>FAISS / Annoy (Vector Search):</strong> Not used — linear scan over all students</li>
+        </ul>
+
+        <div class="note note-interviewer"><strong>🎤 Deep Viva: "What is the difference between face detection and face
+            recognition?"</strong>
+          Detection (MTCNN) finds WHERE faces are in an image — outputs bounding boxes. Recognition
+          (FaceNet/InceptionResnetV1) determines WHO the face belongs to — outputs an embedding that is compared against
+          stored embeddings. Detection is a prerequisite for recognition.
+        </div>
+
+        <div class="note note-interviewer"><strong>🎤 Deep Viva: "Why average 5 embeddings instead of storing all
+            5?"</strong>
+          Averaging reduces noise from individual captures (lighting, angle variations). A single average embedding is
+          more robust and reduces storage + comparison time. Trade-off: loses ability to match against multiple distinct
+          poses.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 7 ====================== -->
+    <div class="section" id="s7">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🗄️ 7. Database</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Database: PostgreSQL via SQLAlchemy ORM</h3>
+        <p>Connection URI: <code>postgresql://postgres:postgresql@localhost:5432/attendence_db</code></p>
+
+        <h3>Schema (3 Tables)</h3>
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th colspan="4" style="text-align:center">admins</th>
+            </tr>
+            <tr>
+              <th>Column</th>
+              <th>Type</th>
+              <th>Constraints</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td>id</td>
+              <td>Integer</td>
+              <td>PRIMARY KEY</td>
+              <td>Auto-increment ID</td>
+            </tr>
+            <tr>
+              <td>email</td>
+              <td>String(120)</td>
+              <td>UNIQUE, NOT NULL</td>
+              <td>Admin login email</td>
+            </tr>
+            <tr>
+              <td>password</td>
+              <td>String(255)</td>
+              <td>NOT NULL</td>
+              <td>Werkzeug hashed password</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th colspan="4" style="text-align:center">students</th>
+            </tr>
+            <tr>
+              <th>Column</th>
+              <th>Type</th>
+              <th>Constraints</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td>id</td>
+              <td>Integer</td>
+              <td>PRIMARY KEY</td>
+              <td>Auto-increment ID</td>
+            </tr>
+            <tr>
+              <td>roll</td>
+              <td>String(50)</td>
+              <td>UNIQUE, NOT NULL</td>
+              <td>Auto-generated roll number</td>
+            </tr>
+            <tr>
+              <td>first_name</td>
+              <td>String(100)</td>
+              <td>NOT NULL</td>
+              <td>Student first name</td>
+            </tr>
+            <tr>
+              <td>last_name</td>
+              <td>String(100)</td>
+              <td>NOT NULL</td>
+              <td>Student last name</td>
+            </tr>
+            <tr>
+              <td>department</td>
+              <td>String(100)</td>
+              <td>—</td>
+              <td>e.g., CSE, ECE</td>
+            </tr>
+            <tr>
+              <td>year</td>
+              <td>String(20)</td>
+              <td>—</td>
+              <td>Admission year</td>
+            </tr>
+            <tr>
+              <td>email</td>
+              <td>String(120)</td>
+              <td>UNIQUE</td>
+              <td>Student email</td>
+            </tr>
+            <tr>
+              <td>embedding</td>
+              <td>Text</td>
+              <td>—</td>
+              <td>JSON-serialized 512-d face vector</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th colspan="4" style="text-align:center">attendance</th>
+            </tr>
+            <tr>
+              <th>Column</th>
+              <th>Type</th>
+              <th>Constraints</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td>id</td>
+              <td>Integer</td>
+              <td>PRIMARY KEY</td>
+              <td>Auto-increment ID</td>
+            </tr>
+            <tr>
+              <td>roll</td>
+              <td>String(20)</td>
+              <td>NOT NULL</td>
+              <td>Student roll number</td>
+            </tr>
+            <tr>
+              <td>method</td>
+              <td>String(10)</td>
+              <td>NOT NULL</td>
+              <td>"Face" or "QR"</td>
+            </tr>
+            <tr>
+              <td>timestamp</td>
+              <td>DateTime</td>
+              <td>DEFAULT utcnow</td>
+              <td>IST time of attendance</td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>ER Diagram</h3>
+        <div class="diagram">
+          <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg">
+            <rect x="20" y="30" width="180" height="130" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="2" />
+            <text x="110" y="55" text-anchor="middle" font-size="14" font-weight="bold" fill="#3b82f6">admins</text>
+            <text x="30" y="80" font-size="11" fill="#333">🔑 id (PK)</text>
+            <text x="30" y="100" font-size="11" fill="#333">email (UNIQUE)</text>
+            <text x="30" y="120" font-size="11" fill="#333">password (hashed)</text>
+
+            <rect x="260" y="10" width="180" height="180" rx="10" fill="#f0fdf4" stroke="#22c55e" stroke-width="2" />
+            <text x="350" y="35" text-anchor="middle" font-size="14" font-weight="bold" fill="#22c55e">students</text>
+            <text x="270" y="58" font-size="11" fill="#333">🔑 id (PK)</text>
+            <text x="270" y="76" font-size="11" fill="#333">roll (UNIQUE)</text>
+            <text x="270" y="94" font-size="11" fill="#333">first_name, last_name</text>
+            <text x="270" y="112" font-size="11" fill="#333">department, year</text>
+            <text x="270" y="130" font-size="11" fill="#333">email (UNIQUE)</text>
+            <text x="270" y="148" font-size="11" fill="#333">🧠 embedding (TEXT)</text>
+
+            <rect x="500" y="30" width="180" height="130" rx="10" fill="#faf5ff" stroke="#a855f7" stroke-width="2" />
+            <text x="590" y="55" text-anchor="middle" font-size="14" font-weight="bold" fill="#a855f7">attendance</text>
+            <text x="510" y="80" font-size="11" fill="#333">🔑 id (PK)</text>
+            <text x="510" y="100" font-size="11" fill="#333">roll (→ students.roll)</text>
+            <text x="510" y="120" font-size="11" fill="#333">method (Face/QR)</text>
+            <text x="510" y="140" font-size="11" fill="#333">timestamp (IST)</text>
+
+            <line x1="440" y1="95" x2="500" y2="95" stroke="#a855f7" stroke-width="2" stroke-dasharray="5,3" />
+            <text x="470" y="88" text-anchor="middle" font-size="9" fill="#64748b">roll</text>
+          </svg>
+        </div>
+
+        <div class="note note-warning"><strong>⚠️ Note:</strong> The <code>attendance.roll</code> column references
+          <code>students.roll</code> logically but there is <strong>no explicit Foreign Key constraint</strong> defined
+          in the SQLAlchemy model. This is a design gap — the relationship is enforced at the application level only.
+        </div>
+
+        <h3>CRUD Operations</h3>
+        <ul>
+          <li><strong>Create:</strong> Student registration, Admin registration, Attendance marking</li>
+          <li><strong>Read:</strong> Dashboard data, Records, Student lookup, Verify student</li>
+          <li><strong>Update:</strong> Save face embedding to existing student</li>
+          <li><strong>Delete:</strong> Clear all attendance records</li>
+        </ul>
+
+        <h3>Indexes & Normalization</h3>
+        <ul>
+          <li><strong>Indexes:</strong> Implicit on PRIMARY KEY columns. UNIQUE constraint on <code>roll</code> and
+            <code>email</code> creates indexes automatically.
+          </li>
+          <li><strong>Normalization:</strong> Approximately 2NF. Embedding stored as JSON in the students table
+            (denormalized for simplicity). Separate embedding table would be 3NF.</li>
+        </ul>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 8 ====================== -->
+    <div class="section" id="s8">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>⚙️ 8. Backend</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Routing — 3 Blueprints</h3>
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Blueprint</th>
+              <th>File</th>
+              <th>Prefix</th>
+              <th>Responsibility</th>
+            </tr>
+            <tr>
+              <td>main_bp</td>
+              <td>routes/main.py</td>
+              <td>/</td>
+              <td>Auth, page rendering, route protection</td>
+            </tr>
+            <tr>
+              <td>student_bp</td>
+              <td>routes/student.py</td>
+              <td>/</td>
+              <td>Student CRUD, face capture, embedding save</td>
+            </tr>
+            <tr>
+              <td>attendance_bp</td>
+              <td>routes/attendance.py</td>
+              <td>/</td>
+              <td>Face recognition, attendance marking, records</td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>Authentication</h3>
+        <ul>
+          <li><strong>Method:</strong> Flask server-side sessions (<code>session["admin"]</code>)</li>
+          <li><strong>Password storage:</strong> Werkzeug's <code>generate_password_hash()</code> (PBKDF2 + SHA256)</li>
+          <li><strong>Login verification:</strong> <code>check_password_hash(stored, input)</code></li>
+          <li><strong>Account lockout:</strong> 3 failed attempts → locked (in-memory dict, resets on server restart)
+          </li>
+        </ul>
+
+        <h3>Route Protection</h3>
+        <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><span class="dec">@main_bp.before_app_request</span>
+<span class="kw">def</span> <span class="fn">block_unauthorized</span>():
+    protected_routes = [<span class="str">"/dashboard"</span>, <span class="str">"/register_page"</span>, <span class="str">"/capture"</span>,
+                        <span class="str">"/recognize_page"</span>, <span class="str">"/records_page"</span>, <span class="str">"/qr_session"</span>]
+    <span class="kw">if</span> request.path <span class="kw">in</span> protected_routes:
+        <span class="kw">if</span> <span class="str">"admin"</span> <span class="kw">not in</span> session:
+            <span class="kw">return</span> redirect(<span class="str">"/"</span>)</pre>
+        </div>
+
+        <h3>Business Logic Highlights</h3>
+        <ul>
+          <li><strong>Roll number generation:</strong> <code>{year}{DEPT}{count_padded_to_3}</code> — e.g.,
+            <code>2024CSE001</code>
+          </li>
+          <li><strong>Duplicate attendance prevention:</strong> Checks if attendance exists for same roll + same date
+            before inserting</li>
+          <li><strong>IST timezone:</strong> <code>datetime.utcnow() + timedelta(hours=5, minutes=30)</code></li>
+          <li><strong>Cache-control headers:</strong> Prevents browser back-button access after logout</li>
+        </ul>
+
+        <h3>Error Handling</h3>
+        <p>Try-except blocks around all route handlers. Errors are logged to console via <code>print()</code> and JSON
+          error responses are returned. Database operations include <code>db.session.rollback()</code> on failure.</p>
+
+        <div class="note note-mistake"><strong>❌ Common Mistakes</strong>
+          <ul>
+            <li>Saying "the project uses JWT" — it doesn't, it uses Flask sessions</li>
+            <li>Saying "bcrypt is used for hashing" — it's Werkzeug's PBKDF2</li>
+            <li>Forgetting that login_attempts dict resets on server restart</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 9 ====================== -->
+    <div class="section" id="s9">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🎨 9. Frontend</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Technology: Vanilla HTML + CSS + JavaScript with Jinja2 Templating</h3>
+        <p>No React, Vue, or Angular. Templates use Jinja2 inheritance (<code>{% extends "base.html" %}</code>).</p>
+
+        <h3>Pages</h3>
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Page</th>
+              <th>Template</th>
+              <th>JS File</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td>Admin Login</td>
+              <td>admin_login.html</td>
+              <td>Inline</td>
+              <td>Login/Register toggle form</td>
+            </tr>
+            <tr>
+              <td>Dashboard</td>
+              <td>dashboard.html</td>
+              <td>dashboard.js</td>
+              <td>Stats: total, present, absent</td>
+            </tr>
+            <tr>
+              <td>Register Student</td>
+              <td>register.html</td>
+              <td>register.js</td>
+              <td>Student details form</td>
+            </tr>
+            <tr>
+              <td>Face Capture</td>
+              <td>capture.html</td>
+              <td>capture.js</td>
+              <td>Webcam + 5 face captures</td>
+            </tr>
+            <tr>
+              <td>Face Attendance</td>
+              <td>recognize.html</td>
+              <td>recognize.js</td>
+              <td>Real-time face recognition</td>
+            </tr>
+            <tr>
+              <td>Records</td>
+              <td>records.html</td>
+              <td>records.js</td>
+              <td>Attendance table by date</td>
+            </tr>
+            <tr>
+              <td>QR Session</td>
+              <td>qr_session.html</td>
+              <td>Inline</td>
+              <td>Display QR code for students</td>
+            </tr>
+            <tr>
+              <td>QR Mobile</td>
+              <td>qr_mobile.html</td>
+              <td>qr_mobile.js</td>
+              <td>Roll number input on mobile</td>
+            </tr>
+            <tr>
+              <td>QR Verify</td>
+              <td>qr_verify.html</td>
+              <td>qr_verify.js</td>
+              <td>Confirm student identity</td>
+            </tr>
+            <tr>
+              <td>QR Result</td>
+              <td>qr_result.html</td>
+              <td>—</td>
+              <td>Success confirmation</td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>Key Frontend Concepts Used</h3>
+        <ul>
+          <li><strong>Canvas API:</strong> Drawing face bounding boxes and labels over the video feed</li>
+          <li><strong>getUserMedia:</strong> Accessing the webcam for face capture and recognition</li>
+          <li><strong>Fetch API:</strong> All server communication is done via async fetch calls with JSON payloads</li>
+          <li><strong>localStorage:</strong> Passing roll number between register→capture and QR mobile→verify pages
+          </li>
+          <li><strong>Client-side tracking:</strong> capture.js implements a mini tracking system with track matching,
+            smoothing, and aging</li>
+        </ul>
+
+        <h3>Responsive Design</h3>
+        <p>Basic responsive layout via CSS flexbox. The QR mobile pages include a viewport meta tag for mobile
+          rendering. No media queries in the main stylesheet.</p>
+
+        <h3>State Management</h3>
+        <p>No framework state management (no Redux, Vuex, etc.). State is managed through:</p>
+        <ul>
+          <li><strong>Server-side:</strong> Flask sessions for auth state</li>
+          <li><strong>Client-side:</strong> JavaScript variables (<code>markedStudents</code> Set, <code>tracks</code>
+            array), <code>localStorage</code></li>
+        </ul>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 10 ====================== -->
+    <div class="section" id="s10">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🔌 10. APIs</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-post">POST</span>/login_admin</div>
+          <div class="api-card-body">
+            <p><strong>Input:</strong> <code>{"email": "...", "password": "..."}</code></p>
+            <p><strong>Output:</strong> <code>{"status": "success"}</code> or
+              <code>{"status": "invalid", "attempts_left": N}</code> or <code>{"status": "locked"}</code>
+            </p>
+            <p><strong>Auth:</strong> None (public). <strong>Sets:</strong> <code>session["admin"]</code></p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-post">POST</span>/register_admin</div>
+          <div class="api-card-body">
+            <p><strong>Input:</strong> <code>{"email": "...", "password": "..."}</code></p>
+            <p><strong>Output:</strong> <code>{"status": "registered"}</code> or <code>{"status": "exists"}</code></p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-post">POST</span>/register</div>
+          <div class="api-card-body">
+            <p><strong>Input:</strong> <code>{"first_name", "last_name", "department", "year", "email"}</code></p>
+            <p><strong>Output:</strong> <code>{"roll": "2024CSE001"}</code> or <code>{"error": "..."}</code></p>
+            <p><strong>Validates:</strong> All fields required, email uniqueness</p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-post">POST</span>/capture_face</div>
+          <div class="api-card-body">
+            <p><strong>Input:</strong> <code>{"image": "data:image/jpeg;base64,..."}</code></p>
+            <p><strong>Output:</strong> <code>{"embedding": [512 floats], "box": [x,y,w,h]}</code> or
+              <code>{"error": "no face"}</code>
+            </p>
+            <p><strong>Pipeline:</strong> base64 decode → OpenCV decode → MTCNN detect → crop → FaceNet embed</p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-post">POST</span>/save_face_data</div>
+          <div class="api-card-body">
+            <p><strong>Input:</strong> <code>{"roll": "...", "embeddings": [[512], [512], ...]}</code></p>
+            <p><strong>Output:</strong> <code>{"status": "saved"}</code></p>
+            <p><strong>Logic:</strong> Averages embeddings → stores as JSON in student.embedding</p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-post">POST</span>/recognize_with_box</div>
+          <div class="api-card-body">
+            <p><strong>Input:</strong> <code>{"image": "data:image/jpeg;base64,..."}</code></p>
+            <p><strong>Output:</strong> <code>{"faces": [{"roll", "confidence", "box": [x,y,w,h], "timestamp"}]}</code>
+            </p>
+            <p><strong>Most complex API.</strong> Runs MTCNN every 10 frames, CSRT tracking between. Multiple filters
+              applied.</p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-post">POST</span>/mark_attendance</div>
+          <div class="api-card-body">
+            <p><strong>Input:</strong> <code>{"roll": "...", "method": "Face" or "QR"}</code></p>
+            <p><strong>Output:</strong> <code>{"status": "marked"}</code> or
+              <code>{"status": "already marked today"}</code>
+            </p>
+            <p><strong>Logic:</strong> Checks for existing record on same date before inserting</p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-get">GET</span>/records</div>
+          <div class="api-card-body">
+            <p><strong>Output:</strong> <code>{"2024-07-31": [{"roll", "method", "time"}], ...}</code></p>
+            <p><strong>Logic:</strong> Groups by date, keeps latest per student per day, sorted desc</p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-get">GET</span>/dashboard_data</div>
+          <div class="api-card-body">
+            <p><strong>Output:</strong> <code>{"total_students": N, "present": N, "absent": N}</code></p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-post">POST</span>/verify_student</div>
+          <div class="api-card-body">
+            <p><strong>Input:</strong> <code>{"roll": "..."}</code> <strong>Output:</strong>
+              <code>{"success": true/false}</code>
+            </p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-get">GET</span>/get_student/&lt;roll&gt;</div>
+          <div class="api-card-body">
+            <p><strong>Output:</strong> <code>{"first_name", "last_name", "department", "year"}</code></p>
+          </div>
+        </div>
+
+        <div class="api-card">
+          <div class="api-card-header"><span class="method-badge method-post">POST</span>/clear_records</div>
+          <div class="api-card-body">
+            <p><strong>Output:</strong> <code>{"status": "cleared"}</code> — Deletes ALL attendance records</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 11 ====================== -->
+    <div class="section" id="s11">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🔍 11. Code Walkthrough</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Entry Point: run.py</h3>
+        <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><span class="kw">from</span> app <span class="kw">import</span> create_app
+<span class="kw">from</span> app.extensions <span class="kw">import</span> db
+
+app = create_app()           <span class="cm"># Flask app factory</span>
+<span class="kw">with</span> app.app_context():
+    db.create_all()           <span class="cm"># Create tables if not exist</span>
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    app.run(host=<span class="str">"0.0.0.0"</span>, port=<span class="num">5000</span>, debug=<span class="kw">True</span>)</pre>
+        </div>
+
+        <h3>App Factory: app/__init__.py</h3>
+        <p>Uses the <strong>Application Factory Pattern</strong> — a Flask best practice that prevents circular imports
+          and enables testing with different configurations.</p>
+        <ol>
+          <li>Creates Flask instance</li>
+          <li>Loads Config class</li>
+          <li>Sets SECRET_KEY</li>
+          <li>Initializes SQLAlchemy with <code>db.init_app(app)</code></li>
+          <li>Imports models (after db init to avoid circular imports)</li>
+          <li>Imports and registers 3 Blueprints</li>
+          <li>Calls <code>db.create_all()</code> within app context</li>
+        </ol>
+
+        <h3>Key Function: recognize_with_box (Most Complex)</h3>
+        <p><strong>Time Complexity:</strong> O(F × S) per frame where F = faces detected, S = total students. For 3
+          faces and 100 students, that's 300 cosine similarity calculations per detection frame.</p>
+        <p><strong>Space Complexity:</strong> O(S) for loading all student embeddings into memory per detection cycle.
+        </p>
+
+        <h3>Key Function: compare_embeddings</h3>
+        <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><span class="kw">def</span> <span class="fn">compare_embeddings</span>(inp, stored):
+    best = <span class="num">-1</span>
+    <span class="kw">for</span> e <span class="kw">in</span> stored:
+        score = cosine_similarity(np.array(inp), np.array(e))
+        <span class="kw">if</span> score > best:
+            best = score
+    <span class="kw">return</span> best, best >= THRESHOLD  <span class="cm"># THRESHOLD = 0.7</span></pre>
+        </div>
+        <p><strong>Note:</strong> This function exists in <code>ai/comparator.py</code> but is NOT used in the main
+          recognition flow. The recognition route implements its own inline comparison loop. This is a code redundancy.
+        </p>
+
+        <h3>Key Function: generate_roll</h3>
+        <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><span class="kw">def</span> <span class="fn">generate_roll</span>(year, dept):
+    count = Student.query.filter_by(year=year, department=dept).count() + <span class="num">1</span>
+    <span class="kw">return</span> f<span class="str">"{year}{dept.upper()}{str(count).zfill(3)}"</span></pre>
+        </div>
+        <p><strong>Potential Issue:</strong> Race condition if two registrations happen concurrently — both might get
+          the same count. Not a problem in single-server deployments.</p>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 12 ====================== -->
+    <div class="section" id="s12">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🎯 12. Design Decisions</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Decision</th>
+              <th>Choice Made</th>
+              <th>Why</th>
+              <th>Trade-off</th>
+            </tr>
+            <tr>
+              <td>Architecture</td>
+              <td>Monolithic Flask</td>
+              <td>Simple, fast to develop, single deployment</td>
+              <td>Not scalable to microservices without refactor</td>
+            </tr>
+            <tr>
+              <td>ML Framework</td>
+              <td>facenet-pytorch (pre-trained)</td>
+              <td>No training data needed, high accuracy</td>
+              <td>Large model size (~100MB), slow on CPU</td>
+            </tr>
+            <tr>
+              <td>Embedding Storage</td>
+              <td>JSON in TEXT column</td>
+              <td>Simple, no additional infrastructure</td>
+              <td>Not searchable, no vector indexing</td>
+            </tr>
+            <tr>
+              <td>Matching</td>
+              <td>Linear scan + cosine similarity</td>
+              <td>Simple implementation</td>
+              <td>O(n) per face — doesn't scale beyond ~1000 students</td>
+            </tr>
+            <tr>
+              <td>Tracking</td>
+              <td>OpenCV CSRT + every-10th-frame detection</td>
+              <td>Reduces GPU/CPU load</td>
+              <td>10-frame lag for new faces entering the view</td>
+            </tr>
+            <tr>
+              <td>Auth</td>
+              <td>Flask sessions (no JWT)</td>
+              <td>Simple for server-rendered pages</td>
+              <td>Not suitable for mobile/SPA with separate API server</td>
+            </tr>
+            <tr>
+              <td>QR Code</td>
+              <td>External API (qrserver.com)</td>
+              <td>No library needed</td>
+              <td>Requires internet, external dependency</td>
+            </tr>
+            <tr>
+              <td>Frontend</td>
+              <td>Vanilla JS (no framework)</td>
+              <td>Lightweight, no build step</td>
+              <td>Harder to maintain at scale</td>
+            </tr>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 13 ====================== -->
+    <div class="section" id="s13">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🔒 13. Security</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Aspect</th>
+              <th>Implementation</th>
+              <th>Status</th>
+            </tr>
+            <tr>
+              <td>Password Hashing</td>
+              <td>Werkzeug PBKDF2 + SHA256</td>
+              <td><span class="badge badge-green">✅ Implemented</span></td>
+            </tr>
+            <tr>
+              <td>Session Management</td>
+              <td>Flask server-side sessions</td>
+              <td><span class="badge badge-green">✅ Implemented</span></td>
+            </tr>
+            <tr>
+              <td>Route Protection</td>
+              <td>before_app_request + session check</td>
+              <td><span class="badge badge-green">✅ Implemented</span></td>
+            </tr>
+            <tr>
+              <td>Account Lockout</td>
+              <td>3-attempt limit (in-memory)</td>
+              <td><span class="badge badge-yellow">⚠️ Partial</span></td>
+            </tr>
+            <tr>
+              <td>Cache Control</td>
+              <td>No-store headers on dashboard</td>
+              <td><span class="badge badge-green">✅ Implemented</span></td>
+            </tr>
+            <tr>
+              <td>SQL Injection</td>
+              <td>SQLAlchemy ORM prevents raw SQL injection</td>
+              <td><span class="badge badge-green">✅ Protected</span></td>
+            </tr>
+            <tr>
+              <td>XSS</td>
+              <td>Jinja2 auto-escapes template variables</td>
+              <td><span class="badge badge-yellow">⚠️ Partial (innerHTML in JS)</span></td>
+            </tr>
+            <tr>
+              <td>CSRF</td>
+              <td>Not implemented (no CSRF tokens)</td>
+              <td><span class="badge badge-red">❌ Missing</span></td>
+            </tr>
+            <tr>
+              <td>Secret Key</td>
+              <td>Hardcoded "secret123"</td>
+              <td><span class="badge badge-red">❌ Insecure</span></td>
+            </tr>
+            <tr>
+              <td>HTTPS</td>
+              <td>Not configured</td>
+              <td><span class="badge badge-red">❌ Missing</span></td>
+            </tr>
+            <tr>
+              <td>Input Validation</td>
+              <td>Basic field presence checks</td>
+              <td><span class="badge badge-yellow">⚠️ Minimal</span></td>
+            </tr>
+            <tr>
+              <td>Liveness Detection</td>
+              <td>Not implemented</td>
+              <td><span class="badge badge-red">❌ Missing</span></td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="note note-warning"><strong>⚠️ Security Improvements Needed</strong>
+          <ul>
+            <li>Move SECRET_KEY to environment variable</li>
+            <li>Add Flask-WTF for CSRF protection</li>
+            <li>Add rate limiting (Flask-Limiter)</li>
+            <li>Sanitize innerHTML in JavaScript (use textContent)</li>
+            <li>Add liveness detection to prevent photo attacks</li>
+            <li>Use persistent lockout storage (Redis/DB instead of dict)</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 14 ====================== -->
+    <div class="section" id="s14">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>⚡ 14. Performance</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Optimizations Present</h3>
+        <ul>
+          <li><strong>MTCNN every 10th frame:</strong> Reduces expensive neural network calls by 90%</li>
+          <li><strong>CSRT tracker:</strong> Lightweight CPU-based tracking between detection frames</li>
+          <li><strong>JPEG compression:</strong> Browser sends compressed base64 instead of raw pixels</li>
+          <li><strong>Client-side frame throttling:</strong> <code>setTimeout(detect, 250)</code> = ~4 FPS max</li>
+          <li><strong>Embedding averaging:</strong> Single comparison per student instead of 5</li>
+          <li><strong>Ghost tracker cleanup:</strong> Removes stale trackers to prevent memory leaks</li>
+        </ul>
+
+        <h3>Bottlenecks</h3>
+        <ul>
+          <li><strong>Linear student scan:</strong> O(n) per face per detection — use FAISS for O(log n)</li>
+          <li><strong>Synchronous inference:</strong> Flask runs single-threaded by default — blocks during ML</li>
+          <li><strong>No caching:</strong> Dashboard data queries DB on every request</li>
+          <li><strong>Base64 overhead:</strong> ~33% larger than binary image data</li>
+        </ul>
+
+        <h3>Not Used in This Project</h3>
+        <ul>
+          <li><strong>Redis caching:</strong> Not used</li>
+          <li><strong>Lazy loading:</strong> Not used</li>
+          <li><strong>CDN:</strong> Not used</li>
+          <li><strong>Multithreading / async:</strong> Not used (Flask default single-thread)</li>
+          <li><strong>GPU acceleration:</strong> Supported but falls back to CPU if CUDA unavailable</li>
+        </ul>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 15 ====================== -->
+    <div class="section" id="s15">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🧪 15. Testing</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <p><strong>No automated tests exist in this project.</strong> No pytest, unittest, or test files were found.</p>
+
+        <h3>Testing Approach Used</h3>
+        <p>Manual testing via browser interaction — registering students, capturing faces, verifying recognition
+          accuracy, and checking attendance records.</p>
+
+        <h3>Suggested Test Cases</h3>
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Test</th>
+              <th>Type</th>
+              <th>What to Verify</th>
+            </tr>
+            <tr>
+              <td>Register with missing fields</td>
+              <td>Unit</td>
+              <td>Returns 400 error</td>
+            </tr>
+            <tr>
+              <td>Register duplicate email</td>
+              <td>Unit</td>
+              <td>Returns "Email already exists"</td>
+            </tr>
+            <tr>
+              <td>Login with wrong password</td>
+              <td>Unit</td>
+              <td>Returns "invalid" + attempts_left</td>
+            </tr>
+            <tr>
+              <td>Login after 3 failures</td>
+              <td>Unit</td>
+              <td>Returns "locked"</td>
+            </tr>
+            <tr>
+              <td>Mark attendance twice same day</td>
+              <td>Integration</td>
+              <td>Returns "already marked today"</td>
+            </tr>
+            <tr>
+              <td>No face in image</td>
+              <td>Integration</td>
+              <td>Returns empty faces array</td>
+            </tr>
+            <tr>
+              <td>Low-light image</td>
+              <td>Integration</td>
+              <td>Returns "low light" error</td>
+            </tr>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 16 ====================== -->
+    <div class="section" id="s16">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🚀 16. Deployment</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Local Deployment (Current Setup)</h3>
+        <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><span class="cm"># 1. Create and activate virtual environment</span>
+python -m venv venv
+venv\Scripts\activate          <span class="cm"># Windows</span>
+
+<span class="cm"># 2. Install dependencies</span>
+pip install -r requirements.txt
+
+<span class="cm"># 3. Setup PostgreSQL database</span>
+psql -U postgres -f seed.sql
+
+<span class="cm"># 4. Run the application</span>
+python run.py                  <span class="cm"># Runs on http://0.0.0.0:5000</span></pre>
+        </div>
+
+        <h3>Not Used in This Project</h3>
+        <ul>
+          <li><strong>Docker:</strong> Not used — no Dockerfile found</li>
+          <li><strong>CI/CD:</strong> Not used — no GitHub Actions or pipeline config</li>
+          <li><strong>Cloud Deployment:</strong> Not used — runs locally only</li>
+          <li><strong>Gunicorn/uWSGI:</strong> Not used — uses Flask dev server</li>
+          <li><strong>Nginx:</strong> Not used — no reverse proxy</li>
+        </ul>
+
+        <div class="note note-tip"><strong>💡 Production Deployment Recommendation</strong>
+          Use Gunicorn with 2-4 workers behind Nginx reverse proxy. Containerize with Docker. Use environment variables
+          for secrets. Consider AWS EC2 or a GPU instance for faster inference.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 17 ====================== -->
+    <div class="section" id="s17">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>📐 17. System Design</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>How would you scale this to 1 Million Users?</h3>
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Challenge</th>
+              <th>Current</th>
+              <th>Scaled Solution</th>
+            </tr>
+            <tr>
+              <td>Embedding Search</td>
+              <td>Linear scan O(n)</td>
+              <td>FAISS / Milvus vector DB → O(log n) ANN search</td>
+            </tr>
+            <tr>
+              <td>Web Server</td>
+              <td>Flask dev server</td>
+              <td>Gunicorn + Nginx + Load Balancer (HAProxy/ALB)</td>
+            </tr>
+            <tr>
+              <td>ML Inference</td>
+              <td>Same Flask process</td>
+              <td>Separate ML service (TorchServe / Triton) with GPU</td>
+            </tr>
+            <tr>
+              <td>Database</td>
+              <td>Single PostgreSQL</td>
+              <td>Read replicas + connection pooling (PgBouncer)</td>
+            </tr>
+            <tr>
+              <td>Session Storage</td>
+              <td>Flask in-memory</td>
+              <td>Redis for sessions</td>
+            </tr>
+            <tr>
+              <td>Image Processing</td>
+              <td>Synchronous</td>
+              <td>Celery + RabbitMQ/Redis for async processing</td>
+            </tr>
+            <tr>
+              <td>Caching</td>
+              <td>None</td>
+              <td>Redis cache for dashboard_data, student lookups</td>
+            </tr>
+            <tr>
+              <td>Static Files</td>
+              <td>Flask serves directly</td>
+              <td>CDN (CloudFront / Cloudflare)</td>
+            </tr>
+            <tr>
+              <td>Monitoring</td>
+              <td>print() statements</td>
+              <td>Prometheus + Grafana, Sentry for errors</td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>Bottlenecks</h3>
+        <ol>
+          <li><strong>#1:</strong> ML inference is CPU-bound and blocks the Flask thread</li>
+          <li><strong>#2:</strong> Linear embedding search doesn't scale</li>
+          <li><strong>#3:</strong> Single-threaded Flask cannot handle concurrent webcam streams</li>
+        </ol>
+
+        <h3>Microservices Architecture (Proposed)</h3>
+        <div class="flow-cards">
+          <div class="flow-card">API Gateway<br><small>Nginx</small></div>
+          <div class="flow-card">Auth Service<br><small>Flask + Redis</small></div>
+          <div class="flow-card">Student Service<br><small>Flask + PostgreSQL</small></div>
+          <div class="flow-card">ML Service<br><small>TorchServe + GPU</small></div>
+          <div class="flow-card">Vector DB<br><small>FAISS / Milvus</small></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 18 ====================== -->
+    <div class="section" id="s18">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>💼 18. HR + Project Discussion</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Common HR Questions</h3>
+
+        <h4>Q: "Tell me about your project."</h4>
+        <p>"I built an AI-powered Attendance System using Flask and FaceNet. It uses MTCNN for face detection and
+          InceptionResnetV1 for generating 512-dimensional face embeddings. Students register their faces, and during
+          class, a webcam automatically recognizes them and marks attendance using cosine similarity matching. It also
+          has a QR code fallback for mobile attendance."</p>
+
+        <h4>Q: "What was your role?"</h4>
+        <p>"I was the sole developer. I designed the database schema, built the Flask backend with three Blueprints,
+          integrated the AI pipeline (MTCNN + FaceNet), implemented the frontend with webcam access and real-time face
+          tracking, and added security features like password hashing and account lockout."</p>
+
+        <h4>Q: "What challenges did you face?"</h4>
+        <ul>
+          <li>"Making MTCNN work with OpenCV frames required BGR→RGB conversion that took debugging time."</li>
+          <li>"Reducing false positives required tuning multiple thresholds — MTCNN confidence (0.95), cosine similarity
+            (0.70), minimum face size (50px), and embedding norm checks."</li>
+          <li>"Smooth bounding box rendering required implementing client-side tracking with linear interpolation."</li>
+        </ul>
+
+        <h4>Q: "What would you improve?"</h4>
+        <p>"I would add liveness detection to prevent photo spoofing, replace linear scan with FAISS for scalable
+          embedding search, add JWT authentication, containerize with Docker, and deploy to cloud with CI/CD."</p>
+
+        <h4>Q: "Why this project?"</h4>
+        <p>"Attendance fraud is a real problem in educational institutions. I wanted to solve it using deep learning
+          while gaining hands-on experience with computer vision, Flask web development, and database design."</p>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 19 ====================== -->
+    <div class="section" id="s19">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🏢 19. TCS Interview Questions (50 Questions)</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Architecture & Design (1-10)</h3>
+        <h4>1. What is the overall architecture? <span class="badge badge-green">🟢</span></h4>
+        <p>Monolithic Flask web app with 3 Blueprints (main, student, attendance), PostgreSQL database, and an embedded
+          MTCNN + FaceNet AI pipeline.</p>
+
+        <h4>2. Why Flask over Django? <span class="badge badge-green">🟢</span></h4>
+        <p>Flask is lightweight and flexible. This project doesn't need Django's admin panel, built-in auth, or ORM
+          migrations. Blueprint pattern provides enough structure.</p>
+
+        <h4>3. What is the Application Factory Pattern? <span class="badge badge-green">🟢</span></h4>
+        <p><code>create_app()</code> creates the Flask instance, loads config, initializes extensions, and registers
+          blueprints. Prevents circular imports and enables testing with different configs.</p>
+
+        <h4>4. How are models imported without circular dependencies? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Models are imported INSIDE <code>create_app()</code> AFTER <code>db.init_app(app)</code> — not at the top of
+          __init__.py. This ensures db is ready before model definitions execute.</p>
+
+        <h4>5. What design patterns are used? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Application Factory, Blueprint, MVC (Models → routes/controllers → templates/views), ORM pattern, Observer
+          pattern (before_app_request).</p>
+
+        <h4>6. Why store embeddings as JSON in TEXT column? <span class="badge badge-green">🟢</span></h4>
+        <p>Simplicity — no vector database needed. Trade-off: can't do database-level similarity search, requires
+          loading into Python memory for comparison.</p>
+
+        <h4>7. How does the QR attendance flow work? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Admin opens QR page → QR code generated pointing to /qr_mobile → Student scans on phone → Enters roll →
+          Verified against DB → Confirms → Attendance marked with method="QR".</p>
+
+        <h4>8. Why use 3 separate Blueprints? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Separation of concerns: main_bp handles auth and navigation, student_bp handles registration and face
+          capture, attendance_bp handles recognition and records. Makes code maintainable.</p>
+
+        <h4>9. What is a Blueprint in Flask? <span class="badge badge-green">🟢</span></h4>
+        <p>A Blueprint is a way to organize Flask routes into separate modules. Like a mini-app that gets registered
+          with the main Flask app. Enables modular code organization.</p>
+
+        <h4>10. How is the roll number generated? <span class="badge badge-yellow">🟡</span></h4>
+        <p><code>{year}{DEPARTMENT}{sequential_count_padded_to_3}</code>. Example: 2024CSE001. Count is based on
+          existing students in same year+department.</p>
+
+        <h3>AI/ML (11-20)</h3>
+        <h4>11. What is MTCNN? <span class="badge badge-green">🟢</span></h4>
+        <p>Multi-task Cascaded Convolutional Networks — a 3-stage cascade (P-Net, R-Net, O-Net) for face detection.
+          Outputs bounding boxes and 5 facial landmarks simultaneously.</p>
+
+        <h4>12. What is FaceNet / InceptionResnetV1? <span class="badge badge-green">🟢</span></h4>
+        <p>A deep CNN that maps face images to 512-dimensional embedding vectors. Pre-trained on VGGFace2 dataset (3.3M
+          images). Faces of the same person have high cosine similarity.</p>
+
+        <h4>13. Why cosine similarity over Euclidean distance? <span class="badge badge-green">🟢</span></h4>
+        <p>Cosine measures angle between vectors (direction), ignoring magnitude. More robust to variations in embedding
+          scale. Range is [-1,1], easy to threshold.</p>
+
+        <h4>14. What is the similarity threshold and why 0.70? <span class="badge badge-green">🟢</span></h4>
+        <p>0.70 is a balance between false positives (too low) and false negatives (too high). The auto-mark threshold
+          in capture.js is 0.75 for extra safety.</p>
+
+        <h4>15. What is transfer learning? How is it used here? <span class="badge badge-green">🟢</span></h4>
+        <p>Using a model pre-trained on one task (VGGFace2 face recognition) and applying it directly to our task
+          without retraining. The InceptionResnetV1 is used in inference-only mode.</p>
+
+        <h4>16. What is a face embedding? <span class="badge badge-green">🟢</span></h4>
+        <p>A compact numerical representation (512 floats) of a face's identity. Similar faces have similar embeddings
+          in the vector space. It's like a fingerprint for faces.</p>
+
+        <h4>17. Why average 5 face captures? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Reduces noise from individual captures (lighting, angle). The averaged embedding is a more robust
+          representation of the student's face. Follow-up: trade-off is losing multi-pose matching ability.</p>
+
+        <h4>18. What are the safety filters in recognition? <span class="badge badge-green">🟢</span></h4>
+        <p>Brightness > 40, MTCNN confidence > 0.95, face size > 50×50, standard deviation > 20 (rejects flat surfaces),
+          embedding norm > 0.5.</p>
+
+        <h4>19. What is the CSRT tracker? Why use it? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Channel and Spatial Reliability Tracker — a CPU-efficient OpenCV tracker that maintains bounding boxes
+          between expensive MTCNN detection frames. Runs every frame while MTCNN runs every 10th frame.</p>
+
+        <h4>20. What is VGGFace2? <span class="badge badge-yellow">🟡</span></h4>
+        <p>A large-scale face dataset with 3.3M images of 9,131 subjects. Used to pre-train InceptionResnetV1. Provides
+          diverse pose, age, and ethnicity coverage.</p>
+
+        <h3>Backend & Database (21-30)</h3>
+        <h4>21. How is authentication implemented? <span class="badge badge-green">🟢</span></h4>
+        <p>Werkzeug PBKDF2+SHA256 password hashing. Flask sessions store admin email. before_app_request middleware
+          checks session on protected routes.</p>
+
+        <h4>22. What is SQLAlchemy? Why use an ORM? <span class="badge badge-green">🟢</span></h4>
+        <p>Object-Relational Mapper — maps Python classes to database tables. Prevents SQL injection, provides
+          database-agnostic queries, cleaner code than raw SQL.</p>
+
+        <h4>23. Explain the database schema. <span class="badge badge-green">🟢</span></h4>
+        <p>3 tables: admins (auth), students (details + embedding), attendance (roll, method, timestamp). No explicit
+          foreign keys — relationship enforced at application level.</p>
+
+        <h4>24. How is duplicate attendance prevented? <span class="badge badge-green">🟢</span></h4>
+        <p><code>Attendance.query.filter(roll==roll, func.date(timestamp)==today).first()</code> — checks if record
+          exists for same student on same date. Returns "already marked today" if found.</p>
+
+        <h4>25. How is timezone handled? <span class="badge badge-yellow">🟡</span></h4>
+        <p><code>datetime.utcnow() + timedelta(hours=5, minutes=30)</code> — manual IST calculation. Not ideal; should
+          use pytz or zoneinfo for proper timezone handling.</p>
+
+        <h4>26. What happens on server restart with account lockout? <span class="badge badge-yellow">🟡</span></h4>
+        <p>The lockout resets because <code>login_attempts</code> is stored in a Python dictionary (in-memory). It
+          should be stored in Redis or the database for persistence.</p>
+
+        <h4>27. What is the before_app_request hook? <span class="badge badge-yellow">🟡</span></h4>
+        <p>A Flask callback that runs before every request to the app. Used here as middleware to check if the user is
+          authenticated before accessing protected routes.</p>
+
+        <h4>28. How are attendance records grouped? <span class="badge badge-yellow">🟡</span></h4>
+        <p>The /records endpoint groups by date (YYYY-MM-DD), keeps only the latest record per student per day, and
+          returns a JSON object with date keys.</p>
+
+        <h4>29. What is db.session.rollback()? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Reverts all uncommitted database changes in the current session. Used in except blocks to prevent partial
+          writes when an error occurs mid-transaction.</p>
+
+        <h4>30. How is the embedding stored and retrieved? <span class="badge badge-green">🟢</span></h4>
+        <p>Stored: <code>json.dumps(embedding.tolist())</code> — numpy array → list → JSON string → TEXT column.
+          Retrieved: <code>json.loads(self.embedding)</code> → Python list → np.array() for comparison.</p>
+
+        <h3>Frontend & Security (31-40)</h3>
+        <h4>31. How does the webcam capture work? <span class="badge badge-green">🟢</span></h4>
+        <p><code>navigator.mediaDevices.getUserMedia({video: true})</code> starts the camera. Canvas draws video frames,
+          converts to base64 JPEG via <code>toDataURL()</code>, sends to server.</p>
+
+        <h4>32. How are face boxes drawn? <span class="badge badge-green">🟢</span></h4>
+        <p>Canvas overlay positioned over the video element. After receiving box coordinates from server, JavaScript
+          scales them to display dimensions and uses <code>ctx.strokeRect()</code>.</p>
+
+        <h4>33. What is Jinja2 template inheritance? <span class="badge badge-yellow">🟡</span></h4>
+        <p><code>{% extends "base.html" %}</code> inherits the layout (nav, container). <code>{% block content %}</code>
+          defines page-specific content. Avoids HTML duplication.</p>
+
+        <h4>34. Why use localStorage for roll number? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Passes data between register→capture pages and QR mobile→verify pages without URL parameters. Persists across
+          page navigations. Cleaned up after use.</p>
+
+        <h4>35. What security vulnerabilities exist? <span class="badge badge-green">🟢</span></h4>
+        <p>Hardcoded secret key, no CSRF protection, no HTTPS, no input sanitization in JS (innerHTML), no liveness
+          detection, in-memory lockout, no rate limiting.</p>
+
+        <h4>36. What is CSRF and why is it missing? <span class="badge badge-green">🟢</span></h4>
+        <p>Cross-Site Request Forgery — attacker tricks user's browser into making requests. Missing because no CSRF
+          tokens in forms/API calls. Fix: use Flask-WTF.</p>
+
+        <h4>37. How does password hashing work? <span class="badge badge-green">🟢</span></h4>
+        <p>Werkzeug uses PBKDF2-SHA256 with random salt. <code>generate_password_hash(password)</code> creates hash.
+          <code>check_password_hash(hash, password)</code> verifies without exposing the original.
+        </p>
+
+        <h4>38. Why no-cache headers on dashboard? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Prevents browser from caching the dashboard page. Without this, pressing the back button after logout would
+          show the cached dashboard page.</p>
+
+        <h4>39. What is the Box smoothing in capture.js? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Linear interpolation: <code>new = prev + (curr - prev) * alpha</code>. alpha=0.65 gives smooth transitions.
+          Prevents jittery bounding boxes between frames.</p>
+
+        <h4>40. How does the track matching algorithm work? <span class="badge badge-yellow">🟡</span></h4>
+        <p>Compares center points of new detections vs existing tracks. If distance < DIST_THRESHOLD (100px), updates
+            existing track. Otherwise creates new track. Tracks age and are removed after MAX_AGE frames or FACE_TIMEOUT
+            ms.</p>
+
+            <h3>Advanced & System Design (41-50)</h3>
+            <h4>41. How would you handle 1000+ students? <span class="badge badge-green">🟢</span></h4>
+            <p>Replace linear scan with FAISS (Facebook AI Similarity Search) for approximate nearest neighbor.
+              Pre-build an index of all embeddings. Search in O(log n) instead of O(n).</p>
+
+            <h4>42. How would you prevent photo spoofing? <span class="badge badge-green">🟢</span></h4>
+            <p>Add liveness detection: blink detection, head movement challenges, infrared depth sensing, or 3D face
+              reconstruction. Current project has no liveness check.</p>
+
+            <h4>43. How would you deploy this in production? <span class="badge badge-yellow">🟡</span></h4>
+            <p>Dockerize → Gunicorn (4 workers) → Nginx reverse proxy → SSL certificate → PostgreSQL managed instance →
+              Environment variables for secrets → CI/CD pipeline.</p>
+
+            <h4>44. What is the difference between .eval() and .train()? <span class="badge badge-yellow">🟡</span></h4>
+            <p><code>.eval()</code> disables dropout and uses running batch norm statistics (inference mode).
+              <code>.train()</code> enables dropout and updates batch norm statistics. Our model uses .eval() because
+              we're only doing inference.
+            </p>
+
+            <h4>45. What is the difference between MTCNN detect() and forward()? <span
+                class="badge badge-yellow">🟡</span></h4>
+            <p><code>detect()</code> returns bounding boxes and probabilities. <code>mtcnn(img)</code> (forward call)
+              returns aligned, cropped face tensors ready for the embedding model.</p>
+
+            <h4>46. How would you add real-time notifications? <span class="badge badge-red">🔴</span></h4>
+            <p>WebSockets (Flask-SocketIO) for real-time push when attendance is marked. Admin dashboard updates live
+              without polling.</p>
+
+            <h4>47. What happens if two students look alike? <span class="badge badge-green">🟢</span></h4>
+            <p>The system picks the highest cosine similarity match above 0.70 threshold. If both are close, it might
+              misidentify. Solution: add secondary verification (OTP/QR) or raise threshold.</p>
+
+            <h4>48. How would you add unit tests? <span class="badge badge-yellow">🟡</span></h4>
+            <p>Use pytest + Flask test client. Create a test config with SQLite in-memory. Test each API endpoint with
+              mock data. Use unittest.mock for AI pipeline.</p>
+
+            <h4>49. What is psycopg2-binary? <span class="badge badge-red">🔴</span></h4>
+            <p>A PostgreSQL adapter for Python. "binary" means it includes pre-compiled C extensions (no build tools
+              needed). SQLAlchemy uses it internally to communicate with PostgreSQL.</p>
+
+            <h4>50. Explain the complete data flow from registration to attendance. <span
+                class="badge badge-green">🟢</span></h4>
+            <p>Register (form → POST /register → generate roll → insert student) → Capture (webcam → 5× POST
+              /capture_face → collect embeddings → POST /save_face_data → average → store JSON) → Recognize (webcam →
+              POST /recognize_with_box → MTCNN detect → FaceNet embed → cosine match → return results) → Mark (POST
+              /mark_attendance → check duplicate → insert record).</p>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 20 ====================== -->
+    <div class="section" id="s20">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>⚡ 20. Rapid Revision Sheet</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <div class="grid-2">
+          <div>
+            <h4>Stack</h4>
+            <ul>
+              <li>Flask 2.3.3 + Jinja2</li>
+              <li>PostgreSQL + SQLAlchemy 3.1.1</li>
+              <li>PyTorch ≥ 2.0 + facenet-pytorch 2.5.3</li>
+              <li>OpenCV 4.9 + NumPy 1.26.4</li>
+              <li>Vanilla HTML/CSS/JS</li>
+            </ul>
+
+            <h4>AI Pipeline</h4>
+            <ul>
+              <li>MTCNN → face detection (boxes + landmarks)</li>
+              <li>InceptionResnetV1 → 512-d embedding</li>
+              <li>Pre-trained on VGGFace2 (3.3M images)</li>
+              <li>Cosine similarity threshold: 0.70</li>
+              <li>CSRT tracker between detection frames</li>
+            </ul>
+
+            <h4>Database</h4>
+            <ul>
+              <li>3 tables: admins, students, attendance</li>
+              <li>Embedding: JSON string in TEXT column</li>
+              <li>No explicit foreign keys</li>
+              <li>Roll format: {year}{DEPT}{count}</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Auth</h4>
+            <ul>
+              <li>Werkzeug PBKDF2 + SHA256</li>
+              <li>Flask sessions (server-side)</li>
+              <li>before_app_request middleware</li>
+              <li>3-attempt lockout (in-memory)</li>
+            </ul>
+
+            <h4>Safety Filters</h4>
+            <ul>
+              <li>Brightness > 40</li>
+              <li>MTCNN confidence > 0.95</li>
+              <li>Face size > 50×50px</li>
+              <li>Std dev > 20 (flat surface)</li>
+              <li>Embedding norm > 0.5</li>
+            </ul>
+
+            <h4>Key APIs</h4>
+            <ul>
+              <li>POST /recognize_with_box → core recognition</li>
+              <li>POST /mark_attendance → mark (once/day)</li>
+              <li>POST /register → student creation</li>
+              <li>POST /capture_face → get embedding</li>
+              <li>GET /records → grouped by date</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 21 ====================== -->
+    <div class="section" id="s21">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>📝 21. Cheat Sheet (50 Facts)</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <ol>
+          <li>Flask is a micro web framework for Python</li>
+          <li>Blueprint pattern organizes routes into modules</li>
+          <li>Application Factory prevents circular imports</li>
+          <li>SQLAlchemy is an ORM (Object-Relational Mapper)</li>
+          <li>MTCNN has 3 stages: P-Net, R-Net, O-Net</li>
+          <li>FaceNet maps faces to 512-dimensional vectors</li>
+          <li>Cosine similarity = dot(a,b) / (norm(a) × norm(b))</li>
+          <li>VGGFace2 has 3.3 million face images</li>
+          <li>Transfer learning = using pre-trained models</li>
+          <li>.eval() mode disables dropout for inference</li>
+          <li>CSRT = Channel and Spatial Reliability Tracker</li>
+          <li>Werkzeug uses PBKDF2+SHA256 for password hashing</li>
+          <li>Flask sessions are server-side by default</li>
+          <li>OpenCV uses BGR color format (not RGB)</li>
+          <li>MTCNN expects RGB input images</li>
+          <li>base64 encoding increases data size by ~33%</li>
+          <li>getUserMedia accesses the webcam in browsers</li>
+          <li>Canvas API draws graphics on HTML elements</li>
+          <li>Jinja2 uses {% extends %} for template inheritance</li>
+          <li>psycopg2 is the PostgreSQL adapter for Python</li>
+          <li>PBKDF2 = Password-Based Key Derivation Function 2</li>
+          <li>JSON.stringify() serializes JS objects to JSON</li>
+          <li>localStorage persists data across page navigations</li>
+          <li>InceptionResnetV1 combines Inception + ResNet</li>
+          <li>Face detection finds WHERE; recognition finds WHO</li>
+          <li>Embedding = compact numerical representation</li>
+          <li>before_app_request runs before every request</li>
+          <li>db.create_all() creates tables from models</li>
+          <li>UNIQUE constraint automatically creates an index</li>
+          <li>Linear interpolation: new = old + (target - old) × α</li>
+          <li>toDataURL() converts canvas to base64 string</li>
+          <li>cv2.imdecode converts bytes to OpenCV image</li>
+          <li>np.mean() averages multiple embeddings</li>
+          <li>ACID = Atomicity, Consistency, Isolation, Durability</li>
+          <li>Roll format: 2024CSE001 = year+dept+serial</li>
+          <li>CSRT tracking is much faster than MTCNN detection</li>
+          <li>func.date() extracts date part from timestamp</li>
+          <li>No CSRF protection in this project</li>
+          <li>No automated tests in this project</li>
+          <li>No Docker configuration in this project</li>
+          <li>FAISS would improve search from O(n) to O(log n)</li>
+          <li>Brightness < 40 triggers low-light rejection</li>
+          <li>min_face_size=20 in MTCNN configuration</li>
+          <li>keep_all=True allows multi-face detection</li>
+          <li>Session.clear() on logout destroys session data</li>
+          <li>app_context() is needed for db operations outside requests</li>
+          <li>Attendance limited to once per student per day</li>
+          <li>Two attendance methods: "Face" and "QR"</li>
+          <li>QR uses external api.qrserver.com</li>
+          <li>Production needs Gunicorn + Nginx + HTTPS</li>
+        </ol>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 22 ====================== -->
+    <div class="section" id="s22">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🎓 22. Viva Questions (40 Questions)</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <ol>
+          <li><strong>What is Flask?</strong> — A lightweight Python web framework for building web applications.</li>
+          <li><strong>What is a Blueprint?</strong> — A Flask component for organizing routes into separate modules.
+          </li>
+          <li><strong>What is MTCNN?</strong> — Multi-task Cascaded CNN for face detection with 3 stages.</li>
+          <li><strong>What does InceptionResnetV1 output?</strong> — A 512-dimensional float vector (face embedding).
+          </li>
+          <li><strong>What is cosine similarity?</strong> — A measure of angle between two vectors, range [-1, 1].</li>
+          <li><strong>Why 0.70 threshold?</strong> — Balance between false positives and false negatives.</li>
+          <li><strong>What is VGGFace2?</strong> — A dataset with 3.3M face images for training face recognition models.
+          </li>
+          <li><strong>What is transfer learning?</strong> — Using a model pre-trained on one task for a different but
+            related task.</li>
+          <li><strong>How are passwords stored?</strong> — Hashed using Werkzeug's PBKDF2+SHA256 with salt.</li>
+          <li><strong>What ORM is used?</strong> — SQLAlchemy (via Flask-SQLAlchemy extension).</li>
+          <li><strong>How many tables in the database?</strong> — 3: admins, students, attendance.</li>
+          <li><strong>How is the roll number generated?</strong> — {year}{department}{sequential_count_padded}.</li>
+          <li><strong>What is the CSRT tracker?</strong> — An OpenCV object tracker used between MTCNN detections.</li>
+          <li><strong>Why BGR to RGB conversion?</strong> — OpenCV uses BGR; MTCNN/PIL expects RGB.</li>
+          <li><strong>How is duplicate attendance prevented?</strong> — Database query checks for same roll + same date.
+          </li>
+          <li><strong>What is the embedding dimension?</strong> — 512.</li>
+          <li><strong>How many face captures during registration?</strong> — 5, then averaged into 1.</li>
+          <li><strong>What is getUserMedia?</strong> — Browser API to access the device camera/microphone.</li>
+          <li><strong>What is localStorage?</strong> — Browser storage for key-value data that persists across pages.
+          </li>
+          <li><strong>What is Jinja2?</strong> — Python templating engine used by Flask for HTML rendering.</li>
+          <li><strong>What does .eval() do in PyTorch?</strong> — Sets model to inference mode, disabling dropout.</li>
+          <li><strong>What does .detach() do?</strong> — Removes tensor from computation graph (no gradient tracking).
+          </li>
+          <li><strong>Why is session.clear() called on home page?</strong> — Forces re-login every time user visits root
+            URL.</li>
+          <li><strong>What is base64 encoding?</strong> — Binary-to-text encoding that represents binary data as ASCII.
+          </li>
+          <li><strong>What is the Canvas API?</strong> — HTML5 API for drawing 2D graphics on web pages.</li>
+          <li><strong>What does db.create_all() do?</strong> — Creates database tables from SQLAlchemy model
+            definitions.</li>
+          <li><strong>What is a face embedding?</strong> — A numerical vector representing a face's identity features.
+          </li>
+          <li><strong>What external API is used?</strong> — api.qrserver.com for QR code generation.</li>
+          <li><strong>What is the lockout mechanism?</strong> — After 3 failed login attempts, account is locked
+            (in-memory).</li>
+          <li><strong>What does func.date() do?</strong> — SQLAlchemy function that extracts the date from a datetime
+            column.</li>
+          <li><strong>How is IST timezone handled?</strong> — UTC + timedelta(hours=5, minutes=30).</li>
+          <li><strong>What is no-store cache control?</strong> — HTTP header preventing browser from caching the
+            response.</li>
+          <li><strong>What is PBKDF2?</strong> — Password-Based Key Derivation Function 2, a hashing algorithm.</li>
+          <li><strong>What is psycopg2?</strong> — PostgreSQL database adapter for Python.</li>
+          <li><strong>What is np.linalg.norm?</strong> — Computes the magnitude (length) of a vector.</li>
+          <li><strong>How many Blueprints?</strong> — 3: main_bp, student_bp, attendance_bp.</li>
+          <li><strong>What is the detection interval?</strong> — MTCNN runs every 10th frame; CSRT tracks between.</li>
+          <li><strong>What is linear interpolation for boxes?</strong> — Smoothing: new_pos = old + (target - old) ×
+            alpha.</li>
+          <li><strong>What does keep_all=True mean?</strong> — MTCNN detects all faces in frame, not just the largest.
+          </li>
+          <li><strong>What port does the app run on?</strong> — 5000 (Flask default).</li>
+        </ol>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 23 ====================== -->
+    <div class="section" id="s23">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>⚔️ 23. Cross Questions & Project Defense</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h4>Q: "Your project has no liveness detection. Can't someone just hold up a photo?"</h4>
+        <p><strong>A:</strong> "Yes, that's a known limitation. In the current version, the flat-surface filter (std dev
+          < 20) provides minimal protection against printed photos, but it won't stop a phone screen photo. For
+            production, I would add infrared depth sensing, blink detection, or challenge-response (ask user to turn
+            head). This was a deliberate scope decision for the academic project."</p>
+
+            <h4>Q: "Your SECRET_KEY is hardcoded. Isn't that a security risk?"</h4>
+            <p><strong>A:</strong> "Absolutely. In production, SECRET_KEY should come from an environment variable or a
+              secrets manager (AWS Secrets Manager, HashiCorp Vault). The hardcoded key is for development convenience
+              only. I'm aware this is a critical security gap."</p>
+
+            <h4>Q: "Why no CSRF protection?"</h4>
+            <p><strong>A:</strong> "The project uses JSON APIs with fetch() calls rather than HTML forms, which are the
+              primary CSRF target. However, APIs are still vulnerable to CSRF if cookies are used for auth (which Flask
+              sessions do). The fix is Flask-WTF's CSRFProtect or switching to token-based auth (JWT)."</p>
+
+            <h4>Q: "What happens when the server restarts during account lockout?"</h4>
+            <p><strong>A:</strong> "The lockout resets because it's stored in a Python dictionary in memory. This is a
+              known limitation. In production, I'd store attempt counts in Redis with TTL expiry, or in the admins
+              database table."</p>
+
+            <h4>Q: "Your linear scan won't scale. What's your plan?"</h4>
+            <p><strong>A:</strong> "For up to 500 students, linear scan is acceptable (~2ms per comparison × 500 = ~1
+              second). Beyond that, I would use FAISS (Facebook AI Similarity Search) to build an index of embeddings
+              and perform approximate nearest neighbor search in O(log n). Alternatively, Milvus or Pinecone for managed
+              vector search."</p>
+
+            <h4>Q: "The QR flow has no identity verification. Any student can enter any roll number."</h4>
+            <p><strong>A:</strong> "Correct. The QR flow trusts the roll number input. To fix this, I'd add: (1)
+              Time-limited session tokens in the QR data, (2) OTP verification via email/phone, or (3) A quick face
+              verification step on the mobile page."</p>
+
+            <h4>Q: "Why didn't you use React or Vue for the frontend?"</h4>
+            <p><strong>A:</strong> "The project scope didn't require SPA features. Vanilla JS with Jinja2 server-side
+              rendering is simpler to deploy (no build step), easier to maintain for this scale, and reduces the
+              learning curve. For a larger project with complex state management, React would be a better choice."</p>
+
+            <h4>Q: "Your attendance.roll has no foreign key constraint. Why?"</h4>
+            <p><strong>A:</strong> "This is a design gap. The relationship is enforced at the application level (we
+              always verify student existence before marking). However, database-level foreign key constraints provide
+              additional data integrity guarantees. I'd add <code>db.ForeignKey('students.roll')</code> in a production
+              version."</p>
+
+            <h4>Q: "How accurate is your face recognition?"</h4>
+            <p><strong>A:</strong> "InceptionResnetV1 pre-trained on VGGFace2 achieves ~99.65% accuracy on the LFW
+              benchmark. In our project, accuracy depends on lighting, camera quality, and angle. The multiple safety
+              filters (confidence thresholds, brightness checks) reduce false positives at the cost of occasionally
+              missing valid faces."</p>
+
+            <h4>Q: "What if two people have very similar faces?"</h4>
+            <p><strong>A:</strong> "The system picks the best cosine similarity match. For identical twins with
+              similarity > 0.70 to each other's embeddings, there's a risk of misidentification. Solution: raise
+              threshold to 0.85, add secondary verification, or use multi-modal biometrics (face + fingerprint)."</p>
+
+      </div>
+    </div>
+
+    <!-- ====================== SECTION 24 ====================== -->
+    <div class="section" id="s24">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>🏁 24. Final Summary</h2>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body">
+
+        <h3>Most Probable Questions</h3>
+        <ol>
+          <li>"Explain your project in 2 minutes" <span class="badge badge-green">🟢</span></li>
+          <li>"How does face recognition work?" <span class="badge badge-green">🟢</span></li>
+          <li>"What is cosine similarity?" <span class="badge badge-green">🟢</span></li>
+          <li>"What database did you use and why?" <span class="badge badge-green">🟢</span></li>
+          <li>"How is authentication implemented?" <span class="badge badge-green">🟢</span></li>
+          <li>"What security issues exist?" <span class="badge badge-green">🟢</span></li>
+          <li>"How would you scale this?" <span class="badge badge-green">🟢</span></li>
+          <li>"What is MTCNN?" <span class="badge badge-green">🟢</span></li>
+          <li>"What is transfer learning?" <span class="badge badge-green">🟢</span></li>
+          <li>"What challenges did you face?" <span class="badge badge-green">🟢</span></li>
+        </ol>
+
+        <h3>Common Mistakes to Avoid</h3>
+        <div class="note note-mistake"><strong>❌ Don't Say These</strong>
+          <ul>
+            <li>"We use JWT for authentication" → We use Flask sessions</li>
+            <li>"We use bcrypt for hashing" → We use Werkzeug PBKDF2</li>
+            <li>"We trained the model" → We use a pre-trained model (transfer learning)</li>
+            <li>"Our project uses React" → It uses vanilla HTML/CSS/JS with Jinja2</li>
+            <li>"We use CNN for recognition" → We use CNN for embedding extraction + cosine similarity for matching</li>
+            <li>"The database has foreign keys" → There are no explicit FK constraints defined</li>
+            <li>"It's deployed on cloud" → It runs locally only</li>
+          </ul>
+        </div>
+
+        <h3>Final Checklist</h3>
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Topic</th>
+              <th>Can You Explain?</th>
+            </tr>
+            <tr>
+              <td>Architecture (monolithic Flask + 3 Blueprints)</td>
+              <td>☐</td>
+            </tr>
+            <tr>
+              <td>AI Pipeline (MTCNN → FaceNet → Cosine Similarity)</td>
+              <td>☐</td>
+            </tr>
+            <tr>
+              <td>Database Schema (3 tables, embedding as JSON)</td>
+              <td>☐</td>
+            </tr>
+            <tr>
+              <td>Authentication (Werkzeug hash + session + lockout)</td>
+              <td>☐</td>
+            </tr>
+            <tr>
+              <td>Face Recognition Flow (capture → embed → compare → mark)</td>
+              <td>☐</td>
+            </tr>
+            <tr>
+              <td>QR Code Flow (generate → scan → verify → mark)</td>
+              <td>☐</td>
+            </tr>
+            <tr>
+              <td>Security Gaps (no CSRF, hardcoded key, no liveness)</td>
+              <td>☐</td>
+            </tr>
+            <tr>
+              <td>Scaling Strategy (FAISS, microservices, GPU service)</td>
+              <td>☐</td>
+            </tr>
+            <tr>
+              <td>Transfer Learning (pre-trained VGGFace2)</td>
+              <td>☐</td>
+            </tr>
+            <tr>
+              <td>Project Limitations + Improvements</td>
+              <td>☐</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="note note-tip"><strong>💡 Final Advice</strong>
+          Practice explaining the complete data flow from student registration to attendance marking in under 2 minutes.
+          Be honest about limitations — interviewers respect awareness of trade-offs more than pretending your project
+          is perfect. Know the difference between face detection (MTCNN) and face recognition (FaceNet) — this is the #1
+          follow-up question.
+        </div>
+
+      </div>
+    </div>
+
+  </div> <!-- End Main -->
+
+  <!-- Back to Top -->
+  <button id="backToTop" onclick="scrollToTop()">↑</button>
+
+  <!-- ======================== JAVASCRIPT ======================== -->
+  <script>
+    // Theme Toggle
+    function toggleTheme() {
+      const body = document.body;
+      const btn = document.getElementById('themeBtn');
+      if (body.getAttribute('data-theme') === 'dark') {
+        body.removeAttribute('data-theme');
+        btn.textContent = '🌙 Dark';
+      } else {
+        body.setAttribute('data-theme', 'dark');
+        btn.textContent = '☀️ Light';
+      }
+    }
+
+    // Section Toggle
+    function toggleSection(header) {
+      const body = header.nextElementSibling;
+      const chevron = header.querySelector('.chevron');
+      body.classList.toggle('open');
+      chevron.classList.toggle('open');
+    }
+
+    // Expand/Collapse All
+    function expandAll() {
+      document.querySelectorAll('.section-body').forEach(b => b.classList.add('open'));
+      document.querySelectorAll('.chevron').forEach(c => c.classList.add('open'));
+    }
+    function collapseAll() {
+      document.querySelectorAll('.section-body').forEach(b => b.classList.remove('open'));
+      document.querySelectorAll('.chevron').forEach(c => c.classList.remove('open'));
+    }
+
+    // Scroll Progress
+    window.addEventListener('scroll', () => {
+      const scrollTop = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = (scrollTop / docHeight) * 100;
+      document.getElementById('progress-bar').style.width = progress + '%';
+
+      // Back to top
+      const btn = document.getElementById('backToTop');
+      if (scrollTop > 400) btn.classList.add('visible');
+      else btn.classList.remove('visible');
+
+      // Active sidebar link
+      const sections = document.querySelectorAll('.section');
+      let current = '';
+      sections.forEach(s => {
+        if (s.getBoundingClientRect().top <= 100) current = s.id;
+      });
+      document.querySelectorAll('.sidebar a').forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+      });
+    });
+
+    function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+    // Copy Code
+    function copyCode(btn) {
+      const code = btn.parentElement.querySelector('pre').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = '✓ Copied';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    }
+
+    // Live Search
+    function liveSearch(query) {
+      const q = query.toLowerCase().trim();
+      document.querySelectorAll('.section').forEach(section => {
+        if (!q) { section.classList.remove('hidden'); return; }
+        const text = section.textContent.toLowerCase();
+        section.classList.toggle('hidden', !text.includes(q));
+      });
+    }
+
+    // Sidebar Toggle (Mobile)
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+    }
+
+    // Close sidebar on link click (mobile)
+    document.querySelectorAll('.sidebar a').forEach(a => {
+      a.addEventListener('click', () => {
+        if (window.innerWidth <= 900) document.getElementById('sidebar').classList.remove('open');
+      });
+    });
+  </script>
+</body>
+
+</html>

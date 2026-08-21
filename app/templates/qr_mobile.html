@@ -1,0 +1,23 @@
+{% extends "qr_base.html" %}
+{% block content %}
+
+<div class="card">
+    <div class="badge" style="background:#dbeafe; color:#1e40af;">
+        🔒 Verified QR Session
+    </div>
+    
+    <h2>Student Attendance</h2>
+    <p style="color:#64748b; font-size:14px; margin-top:-6px;">
+        Enter your Roll Number to record your presence
+    </p>
+
+    <input id="roll" placeholder="e.g. 2026CSE001" autocomplete="off" autocorrect="off" autocapitalize="characters" />
+    
+    <button onclick="verify()">Verify Identity →</button>
+    
+    <p id="msg" style="margin-top:14px; font-size:14px; color:#dc2626; font-weight:500;"></p>
+</div>
+
+<script src="/static/js/qr_mobile.js"></script>
+
+{% endblock %}

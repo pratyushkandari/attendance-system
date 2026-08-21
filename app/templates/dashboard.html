@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container">
+    <div class="card large">
+
+        <h2>📊 Admin Dashboard</h2>
+        <p id="todayDate"></p>
+
+        <!-- ✅ STATS SECTION -->
+        <div class="stats" style="display:flex; gap:20px; justify-content:center; flex-wrap:wrap;">
+
+            <div class="stat" style="background:#2563eb; color:white; padding:20px; border-radius:10px; min-width:150px;">
+                <h3>Total Students</h3>
+                <p id="students"></p>
+            </div>
+
+            <div class="stat" style="background:#16a34a; color:white; padding:20px; border-radius:10px; min-width:150px;">
+                <h3>Present</h3>
+                <p id="present"></p>
+            </div>
+
+            <div class="stat" style="background:#dc2626; color:white; padding:20px; border-radius:10px; min-width:150px;">
+                <h3>Absent</h3>
+                <p id="absent"></p>
+            </div>
+
+        </div>
+
+        <!-- ✅ ACTION BUTTON -->
+        <div style="margin-top:25px; text-align:center;">
+            <button onclick="clearRecords()" 
+                    style="background:#dc2626; color:white; padding:10px 20px; border:none; border-radius:8px; cursor:pointer;">
+                🗑 Clear Records
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<script src="/static/js/dashboard.js"></script>
+
+{% endblock %}
