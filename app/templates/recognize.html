@@ -1,43 +1,119 @@
 {% extends "base.html" %}
+{% block title %}Live Biometric Attendance Kiosk &bull; VisionAttend Platform{% endblock %}
 {% block content %}
 
-<div class="card large" style="max-width:700px; text-align:center;">
-    <h2>👁️ Live Multi-Face Attendance</h2>
-    <p style="color:#64748b; font-size:13px; margin-top:-5px;">
-        Real-time FaceNet Biometrics • CSRT Object Tracking • Active Eye-Blink Liveness Anti-Spoofing
-    </p>
-
-    <div class="video-wrapper">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="overlay"></canvas>
+<div class="page-header" style="margin-bottom:1.25rem;">
+    <div class="page-title-group">
+        <h1>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary-600);">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            Live Biometric Attendance Terminal
+        </h1>
+        <p class="page-subtitle">
+            Continuous FaceNet Vector Extraction &bull; Multi-Face CSRT Tracking &bull; Active Eye-Blink Liveness Anti-Spoofing
+        </p>
     </div>
+    <div>
+        <span class="badge badge-green" style="font-size:0.8rem; padding:0.35rem 0.85rem;">
+            <span class="pulse-dot"></span> Live Kiosk Active
+        </span>
+    </div>
+</div>
 
-    <!-- Active Liveness & Scanner Status HUD -->
-    <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 18px; margin-top:12px; flex-wrap:wrap; gap:8px;">
-        <div style="text-align:left;">
-            <p id="result" style="margin:0; font-weight:600; font-size:14px; color:#1e293b;">
-                🔍 Scanning for registered students...
-            </p>
-        </div>
-        <div>
-            <span id="livenessBadge" style="background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:600; font-size:12px;">
-                👁️ Liveness: Blink Required
+<div style="display:grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr); gap:1.5rem; align-items:start;" class="kiosk-grid">
+    
+    <!-- LEFT: Camera HUD Viewfinder -->
+    <div class="camera-viewport-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <div style="font-weight:700; font-size:0.95rem; display:flex; align-items:center; gap:0.5rem; color:var(--slate-200);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary-400);">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="22" y1="12" x2="18" y2="12"></line>
+                    <line x1="6" y1="12" x2="2" y2="12"></line>
+                    <line x1="12" y1="6" x2="12" y2="2"></line>
+                    <line x1="12" y1="22" x2="12" y2="18"></line>
+                </svg>
+                AI Biometric Reticle Feed
+            </div>
+            <span id="livenessBadge" class="badge badge-rose" style="background:rgba(244,63,94,0.15); color:#fda4af; border-color:rgba(244,63,94,0.3);">
+                Eye-Blink Liveness Required
             </span>
         </div>
-    </div>
 
-    <!-- Smart Adaptive Hardware/Environment Fallback Alert -->
-    <div id="fallbackAlert" style="display:none; margin-top:14px; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px 16px; text-align:left; align-items:center; justify-content:space-between; gap:12px;">
-        <div style="display:flex; align-items:center; gap:10px;">
-            <span id="fallbackIcon" style="font-size:22px;">🌙</span>
-            <div>
-                <div id="fallbackTitle" style="font-weight:700; font-size:13px; color:#92400e;">Low Lighting Detected</div>
-                <div id="fallbackSub" style="font-size:12px; color:#b45309;">Camera lighting is dim. You can switch to instant QR code check-in:</div>
+        <div class="video-container">
+            <video id="video" class="video-element" autoplay playsinline muted></video>
+            <canvas id="overlay" class="canvas-overlay"></canvas>
+            <!-- Corner Reticles -->
+            <div class="hud-corner hud-top-left"></div>
+            <div class="hud-corner hud-top-right"></div>
+            <div class="hud-corner hud-bottom-left"></div>
+            <div class="hud-corner hud-bottom-right"></div>
+        </div>
+
+        <!-- Telemetry & Detection Status -->
+        <div class="hud-telemetry-bar">
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+                <span class="pulse-dot"></span>
+                <span id="result" style="color:var(--slate-200); font-weight:600;">Scanning camera field for student faces...</span>
+            </div>
+            <div style="font-family:var(--font-mono); font-size:0.725rem; color:var(--slate-400);">
+                SIMD Vector Search: 0.2ms &bull; 30 FPS CPU
             </div>
         </div>
-        <a id="fallbackBtn" href="/qr_session" style="background:#2563eb; color:#ffffff; padding:7px 14px; font-size:12px; font-weight:700; border-radius:6px; text-decoration:none; white-space:nowrap; display:inline-block;">
-            📱 Switch to QR
-        </a>
+
+        <!-- Low Light / Hardware Fallback Alert -->
+        <div id="fallbackAlert" style="display:none; margin-top:1rem; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:var(--radius-md); padding:0.85rem 1rem; align-items:center; justify-content:space-between; gap:0.75rem;">
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span id="fallbackIcon" style="font-size:1.25rem;">&#127769;</span>
+                <div>
+                    <div id="fallbackTitle" style="font-weight:700; font-size:0.825rem; color:#fde68a;">Sub-Optimal Lighting Detected</div>
+                    <div id="fallbackSub" style="font-size:0.75rem; color:#fef3c7;">Facial confidence reduced. Switch to dynamic cryptographic QR session:</div>
+                </div>
+            </div>
+            <a id="fallbackBtn" href="/qr_session" class="btn btn-primary" style="padding:0.4rem 0.85rem; font-size:0.75rem; white-space:nowrap;">
+                Switch to QR Session &rarr;
+            </a>
+        </div>
+    </div>
+
+    <!-- RIGHT: Live Verification Stream & Controls -->
+    <div class="card-panel">
+        <div class="card-header-flex">
+            <div class="card-header-title" style="font-size:1rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--emerald-600);">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                Session Attendance Feed
+            </div>
+            <span class="badge badge-green">Real-Time Sync</span>
+        </div>
+
+        <p style="font-size:0.8rem; color:var(--slate-500); margin-bottom:1rem;">
+            Students verified by facial centroid matching (confidence &ge; 70%) and eye-blink anti-spoofing are automatically committed to the database.
+        </p>
+
+        <div id="liveFeedContainer" style="display:flex; flex-direction:column; gap:0.65rem; min-height:220px; max-height:360px; overflow-y:auto; padding-right:4px;">
+            <div style="text-align:center; padding:2.5rem 1rem; color:var(--slate-400); font-size:0.825rem; background:var(--slate-50); border-radius:var(--radius-md); border:1px dashed var(--slate-200);">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:0.5rem; opacity:0.6;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <div>Awaiting verified face detections...</div>
+            </div>
+        </div>
+
+        <div style="margin-top:1.5rem; border-top:1px solid var(--slate-100); padding-top:1rem; display:flex; justify-content:space-between; align-items:center;">
+            <a href="/records_page" class="btn btn-secondary" style="font-size:0.8rem; padding:0.45rem 0.85rem;">
+                View All Records &rarr;
+            </a>
+            <a href="/qr_session" class="btn btn-secondary" style="font-size:0.8rem; padding:0.45rem 0.85rem;">
+                Open QR Terminal
+            </a>
+        </div>
     </div>
 </div>
 

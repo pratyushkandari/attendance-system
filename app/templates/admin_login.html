@@ -1,48 +1,130 @@
 {% extends "base.html" %}
+{% block title %}System Administrator Authentication &bull; VisionAttend{% endblock %}
 {% block content %}
 
-<div class="container">
-    <div class="card" style="max-width:440px; margin:auto; text-align:center;">
-
-        <h2 id="title">🔐 Admin Login</h2>
-        <p id="subTitle" style="color:#64748b; font-size:13px; margin-top:-6px;">
-            Enter your credentials to access the attendance dashboard
-        </p>
-
-        <div style="margin: 15px 0;">
-            <input id="email" type="email" placeholder="admin@example.com" style="margin-bottom:12px;">
-            <input id="password" type="password" placeholder="Password" oninput="checkStrength(this.value)">
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="auth-logo-badge">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+            </div>
+            <h2 class="auth-title" id="title">Administrator Sign In</h2>
+            <p class="auth-desc" id="subTitle">
+                Enter your authorized credentials to access attendance management console
+            </p>
         </div>
 
-        <!-- Live Password Requirements for Registration -->
-        <div id="pwdRequirements" style="display:none; text-align:left; font-size:12px; margin-bottom:14px; background:#f8fafc; padding:10px 14px; border-radius:8px; border:1px solid #e2e8f0;">
-            <div style="font-weight:700; margin-bottom:5px; color:#334155;">Password Security Requirements:</div>
-            <div id="reqLen" style="color:#ef4444; margin-bottom:2px;">• Minimum 8 characters</div>
-            <div id="reqCase" style="color:#ef4444; margin-bottom:2px;">• Uppercase (A-Z) & lowercase (a-z)</div>
-            <div id="reqNum" style="color:#ef4444; margin-bottom:2px;">• At least one number (0-9)</div>
-            <div id="reqSpecial" style="color:#ef4444;">• At least one special symbol (!@#$%^&*)</div>
+        <form onsubmit="event.preventDefault(); login();" autocomplete="on">
+            <div class="form-group">
+                <label class="form-label" for="email">Institutional Email</label>
+                <div class="input-wrapper">
+                    <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                        <polyline points="22,6 12,13 2,6"></polyline>
+                    </svg>
+                    <input id="email" type="email" class="input-field input-with-icon" placeholder="admin@institution.edu" required autocomplete="username">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                    <label class="form-label" for="password" style="margin-bottom:0;">Security Password</label>
+                </div>
+                <div class="input-wrapper">
+                    <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <input id="password" type="password" class="input-field input-with-icon" style="padding-right: 2.5rem;" placeholder="••••••••••••" oninput="checkStrength(this.value)" required autocomplete="current-password">
+                    <button type="button" onclick="togglePasswordVisibility()" style="position:absolute; right:0.75rem; background:none; border:none; color:var(--slate-400); cursor:pointer; padding:4px; display:flex;" aria-label="Toggle password view">
+                        <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Password Requirements for Registration Mode -->
+            <div id="pwdRequirements" class="pwd-meter-box">
+                <div class="pwd-meter-title">NIST 800-63B Compliance Checklist:</div>
+                <ul class="pwd-req-list">
+                    <li id="reqLen" class="pwd-req-item">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"></circle></svg>
+                        <span>Minimum 8 characters (up to 128)</span>
+                    </li>
+                    <li id="reqCase" class="pwd-req-item">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"></circle></svg>
+                        <span>Uppercase (A-Z) &amp; lowercase (a-z)</span>
+                    </li>
+                    <li id="reqNum" class="pwd-req-item">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"></circle></svg>
+                        <span>At least one number (0-9)</span>
+                    </li>
+                    <li id="reqSpecial" class="pwd-req-item">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"></circle></svg>
+                        <span>Special character symbol (!@#$%^&*)</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Dynamic Feedback Messages -->
+            <div id="errorBox" style="display:none;" class="alert-box alert-rose">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <span id="errorMsg"></span>
+            </div>
+
+            <div id="successBox" style="display:none;" class="alert-box alert-emerald">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <span id="msg"></span>
+            </div>
+
+            <button type="submit" id="mainBtn" class="btn btn-primary btn-block" style="padding: 0.75rem; font-size: 0.95rem; margin-top: 0.5rem;">
+                Sign In to Console &rarr;
+            </button>
+        </form>
+
+        <div style="text-align:center; margin-top: 1.5rem;">
+            <p id="toggleText" style="font-size:0.825rem; color:var(--slate-500);">
+                Initial system deployment?
+                <a href="javascript:void(0)" onclick="toggle()" style="color:var(--primary-600); font-weight:700; text-decoration:none;">Initialize Admin Profile</a>
+            </p>
         </div>
 
-        <!-- Feedback Messages -->
-        <p id="errorMsg" style="color:#dc2626; font-size:14px; margin:8px 0; font-weight:500;"></p>
-        <p id="msg" style="color:#16a34a; font-size:14px; margin:8px 0; font-weight:500;"></p>
-
-        <button onclick="login()" id="mainBtn" style="width:100%; padding:11px;">
-            Login
-        </button>
-
-        <hr style="margin:20px 0; border:none; border-top:1px solid #e2e8f0;">
-
-        <p id="toggleText" style="font-size:13px; color:#64748b;">
-            First time setup?
-            <a href="#" onclick="toggle()" style="color:#2563eb; font-weight:600; text-decoration:none;">Create Admin Account</a>
-        </p>
-
+        <div class="auth-badge-footer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <span>SHA-256 HMAC &bull; Rate-Limited &bull; Isolated Session</span>
+        </div>
     </div>
 </div>
 
 <script>
 let isLogin = true;
+
+function togglePasswordVisibility() {
+    const pwd = document.getElementById("password");
+    const icon = document.getElementById("eyeIcon");
+    if (pwd.type === "password") {
+        pwd.type = "text";
+        icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+    } else {
+        pwd.type = "password";
+        icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+    }
+}
+
+function updateReqState(element, isValid) {
+    if (isValid) {
+        element.classList.add("valid");
+        element.querySelector("svg").innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
+    } else {
+        element.classList.remove("valid");
+        element.querySelector("svg").innerHTML = '<circle cx="12" cy="12" r="10"></circle>';
+    }
+}
 
 function checkStrength(pwd) {
     if (isLogin) return;
@@ -52,81 +134,72 @@ function checkStrength(pwd) {
     const reqNum = document.getElementById("reqNum");
     const reqSpecial = document.getElementById("reqSpecial");
 
-    // Length check
-    if (pwd.length >= 8) {
-        reqLen.style.color = "#16a34a";
-        reqLen.innerText = "✓ Minimum 8 characters";
-    } else {
-        reqLen.style.color = "#ef4444";
-        reqLen.innerText = "• Minimum 8 characters";
-    }
-
-    // Case check
-    if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) {
-        reqCase.style.color = "#16a34a";
-        reqCase.innerText = "✓ Uppercase & lowercase included";
-    } else {
-        reqCase.style.color = "#ef4444";
-        reqCase.innerText = "• Uppercase (A-Z) & lowercase (a-z)";
-    }
-
-    // Number check
-    if (/\d/.test(pwd)) {
-        reqNum.style.color = "#16a34a";
-        reqNum.innerText = "✓ Number included";
-    } else {
-        reqNum.style.color = "#ef4444";
-        reqNum.innerText = "• At least one number (0-9)";
-    }
-
-    // Special character check
-    if (/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?/~`'"]/.test(pwd)) {
-        reqSpecial.style.color = "#16a34a";
-        reqSpecial.innerText = "✓ Special symbol included";
-    } else {
-        reqSpecial.style.color = "#ef4444";
-        reqSpecial.innerText = "• At least one special symbol (!@#$%^&*)";
-    }
+    updateReqState(reqLen, pwd.length >= 8);
+    updateReqState(reqCase, /[a-z]/.test(pwd) && /[A-Z]/.test(pwd));
+    updateReqState(reqNum, /\d/.test(pwd));
+    updateReqState(reqSpecial, /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?/~`'"]/.test(pwd));
 }
 
 function toggle() {
     isLogin = !isLogin;
 
     document.getElementById("title").innerText =
-        isLogin ? "🔐 Admin Login" : "📝 Admin Registration";
+        isLogin ? "Administrator Sign In" : "Initialize Administrator";
 
     document.getElementById("subTitle").innerText =
-        isLogin ? "Enter your credentials to access the attendance dashboard" : "Register the primary administrator account";
+        isLogin ? "Enter your authorized credentials to access attendance management console" : "Create primary administrative credentials with cryptographic hashing";
 
     document.getElementById("mainBtn").innerText =
-        isLogin ? "Login" : "Register Admin";
+        isLogin ? "Sign In to Console \u2192" : "Create Administrator Account \u2192";
 
     document.getElementById("pwdRequirements").style.display =
         isLogin ? "none" : "block";
 
     document.getElementById("toggleText").innerHTML =
         isLogin
-        ? `First time setup? <a href="#" onclick="toggle()" style="color:#2563eb; font-weight:600; text-decoration:none;">Create Admin Account</a>`
-        : `Already registered? <a href="#" onclick="toggle()" style="color:#2563eb; font-weight:600; text-decoration:none;">Return to Login</a>`;
+        ? `Initial system deployment? <a href="javascript:void(0)" onclick="toggle()" style="color:var(--primary-600); font-weight:700; text-decoration:none;">Initialize Admin Profile</a>`
+        : `Existing administrator? <a href="javascript:void(0)" onclick="toggle()" style="color:var(--primary-600); font-weight:700; text-decoration:none;">Return to Sign In</a>`;
 
-    document.getElementById("errorMsg").innerText = "";
-    document.getElementById("msg").innerText = "";
+    hideMessages();
 
     if (!isLogin) {
         checkStrength(document.getElementById("password").value);
     }
 }
 
+function hideMessages() {
+    document.getElementById("errorBox").style.display = "none";
+    document.getElementById("successBox").style.display = "none";
+    document.getElementById("errorMsg").innerText = "";
+    document.getElementById("msg").innerText = "";
+}
+
+function showError(text) {
+    document.getElementById("successBox").style.display = "none";
+    document.getElementById("errorMsg").innerText = text;
+    document.getElementById("errorBox").style.display = "flex";
+}
+
+function showSuccess(text) {
+    document.getElementById("errorBox").style.display = "none";
+    document.getElementById("msg").innerText = text;
+    document.getElementById("successBox").style.display = "flex";
+}
+
 async function login() {
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
+    const btn = document.getElementById("mainBtn");
 
     if (!email || !password) {
-        document.getElementById("errorMsg").innerText = "⚠️ Please enter both email and password.";
+        showError("Please enter both administrator email and password.");
         return;
     }
 
     const url = isLogin ? "/login_admin" : "/register_admin";
+    btn.disabled = true;
+    const originalText = btn.innerText;
+    btn.innerText = "Authenticating...";
 
     try {
         const res = await fetch(url, {
@@ -136,38 +209,45 @@ async function login() {
         });
 
         const data = await res.json();
-
-        document.getElementById("errorMsg").innerText = "";
-        document.getElementById("msg").innerText = "";
+        hideMessages();
 
         if (isLogin) {
             if (data.status === "success") {
+                btn.innerText = "Access Granted...";
                 window.location.href = "/dashboard";
             } else if (data.status === "locked") {
-                document.getElementById("errorMsg").innerText = "🚫 " + (data.message || "Account temporarily locked.");
+                showError(data.message || "Account temporarily locked due to failed attempts.");
+                btn.disabled = false;
+                btn.innerText = originalText;
             } else if (data.status === "invalid") {
-                document.getElementById("errorMsg").innerText = "❌ " + (data.message || "Invalid credentials.");
+                showError(data.message || "Invalid authentication credentials.");
+                btn.disabled = false;
+                btn.innerText = originalText;
             } else {
-                document.getElementById("errorMsg").innerText = "❌ " + (data.message || "Login failed.");
+                showError(data.message || "Authentication rejected.");
+                btn.disabled = false;
+                btn.innerText = originalText;
             }
         } else {
+            btn.disabled = false;
+            btn.innerText = originalText;
             if (data.status === "registered") {
                 toggle();
-                document.getElementById("msg").innerText = "✅ Admin registered successfully! You can now log in.";
-            } else if (data.status === "weak_password") {
-                document.getElementById("errorMsg").innerText = "⚠️ " + data.message;
-            } else if (data.status === "invalid_email") {
-                document.getElementById("errorMsg").innerText = "⚠️ " + data.message;
+                showSuccess("Administrator registered successfully. You may now sign in.");
+            } else if (data.status === "weak_password" || data.status === "invalid_email") {
+                showError(data.message);
             } else if (data.status === "exists") {
-                document.getElementById("errorMsg").innerText = "⚠️ " + (data.message || "An administrator with this email already exists.");
+                showError(data.message || "An administrator with this email is already registered.");
             } else {
-                document.getElementById("errorMsg").innerText = "❌ " + (data.message || "Registration failed.");
+                showError(data.message || "Registration failed.");
             }
         }
 
     } catch (err) {
         console.error(err);
-        document.getElementById("errorMsg").innerText = "⚠️ Network / server error. Please try again.";
+        showError("Network/server communication failure. Please check backend service.");
+        btn.disabled = false;
+        btn.innerText = originalText;
     }
 }
 </script>

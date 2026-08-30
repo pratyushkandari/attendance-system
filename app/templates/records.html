@@ -1,23 +1,52 @@
 {% extends "base.html" %}
+{% block title %}Attendance Audit Ledger &bull; VisionAttend Platform{% endblock %}
 {% block content %}
 
-<div class="card large" style="max-width:800px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
-        <h2 style="margin:0;">📑 Attendance Records Log</h2>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <a href="/export_records" style="background:#2563eb; color:#ffffff; padding:8px 16px; font-size:13px; font-weight:600; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-                📥 Export CSV Report
-            </a>
-            <button onclick="clearRecords()" style="background:#dc2626; padding:8px 16px; font-size:13px; margin:0;">
-                🗑 Clear All Records
-            </button>
-        </div>
+<div class="page-header">
+    <div class="page-title-group">
+        <h1>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary-600);">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            Attendance Verification Logs
+        </h1>
+        <p class="page-subtitle">
+            Chronological audit ledger of facial recognition matches and dynamic QR check-ins
+        </p>
     </div>
 
-    <div style="overflow-x:auto;">
-        <table id="table">
+    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+        <a href="/export_records" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Download CSV Report
+        </a>
+        <button onclick="clearRecords()" class="btn btn-danger">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            Purge All Records
+        </button>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div class="table-wrapper">
+        <table id="table" class="app-table">
             <tr>
-                <td colspan="3" style="color:#64748b; padding:20px;">Loading attendance logs...</td>
+                <td colspan="3" style="text-align:center; padding:2.5rem 1rem; color:var(--slate-400);">
+                    <div style="display:flex; align-items:center; justify-content:center; gap:0.5rem;">
+                        <span class="pulse-dot"></span>
+                        <span>Retrieving persistent ledger from database...</span>
+                    </div>
+                </td>
             </tr>
         </table>
     </div>

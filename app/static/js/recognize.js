@@ -7,6 +7,7 @@ const fallbackAlert = document.getElementById("fallbackAlert");
 const fallbackIcon = document.getElementById("fallbackIcon");
 const fallbackTitle = document.getElementById("fallbackTitle");
 const fallbackSub = document.getElementById("fallbackSub");
+const liveFeedContainer = document.getElementById("liveFeedContainer");
 
 let markedStudents = new Set();
 let prevBoxes = [];
@@ -40,11 +41,10 @@ navigator.mediaDevices.getUserMedia({
 })
 .catch(err => {
     console.error("[WEBCAM HARDWARE ERROR]:", err);
-    resultEl.innerHTML = "❌ <b>Camera Access Error:</b> Webcam is blocked or disconnected.";
+    if (resultEl) resultEl.innerHTML = "<span style='color:#f87171;'>Camera Hardware Error: Access blocked or device disconnected.</span>";
 
-    // Adaptively show smart Camera Fallback Prompt
     if (fallbackAlert) {
-        if (fallbackIcon) fallbackIcon.innerText = "📷";
+        if (fallbackIcon) fallbackIcon.innerText = "\uD83D\uDCF7";
         if (fallbackTitle) fallbackTitle.innerText = "Camera Device Unavailable";
         if (fallbackSub) fallbackSub.innerText = "Webcam is disconnected or blocked. You can take attendance with Dynamic QR instead:";
         fallbackAlert.style.display = "flex";
@@ -136,15 +136,48 @@ function analyzeEyeLiveness(tctx, box) {
 }
 
 function updateLivenessBadge(verified) {
+    if (!livenessBadge) return;
     if (verified) {
-        livenessBadge.style.background = "#dcfce7";
-        livenessBadge.style.color = "#166534";
-        livenessBadge.innerText = "👁️ Liveness: Verified ✓";
+        livenessBadge.className = "badge badge-green";
+        livenessBadge.style.background = "rgba(16, 185, 129, 0.15)";
+        livenessBadge.style.color = "#34d399";
+        livenessBadge.style.borderColor = "rgba(16, 185, 129, 0.3)";
+        livenessBadge.innerText = "Liveness: Verified \u2713";
     } else {
-        livenessBadge.style.background = "#fee2e2";
-        livenessBadge.style.color = "#991b1b";
-        livenessBadge.innerText = "👁️ Liveness: Blink Required";
+        livenessBadge.className = "badge badge-rose";
+        livenessBadge.style.background = "rgba(244, 63, 94, 0.15)";
+        livenessBadge.style.color = "#fda4af";
+        livenessBadge.style.borderColor = "rgba(244, 63, 94, 0.3)";
+        livenessBadge.innerText = "Eye-Blink Liveness Required";
     }
+}
+
+function addLiveFeedCard(roll, confidence, timeStr) {
+    if (!liveFeedContainer) return;
+    
+    // Clear placeholder if present
+    if (liveFeedContainer.innerText.includes("Awaiting verified face detections")) {
+        liveFeedContainer.innerHTML = "";
+    }
+
+    const card = document.createElement("div");
+    card.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius-md); padding:0.65rem 0.85rem; font-size:0.8rem;";
+    card.innerHTML = `
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+            <div style="width:30px; height:30px; border-radius:50%; background:var(--emerald-50); color:var(--emerald-600); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.75rem;">
+                \u2713
+            </div>
+            <div>
+                <div style="font-weight:700; color:var(--slate-800);">${roll}</div>
+                <div style="font-size:0.7rem; color:var(--slate-400);">FaceNet Confidence: ${Math.round(confidence * 100)}%</div>
+            </div>
+        </div>
+        <div style="text-align:right;">
+            <span class="badge badge-green" style="font-size:0.68rem;">Recorded</span>
+            <div style="font-size:0.68rem; color:var(--slate-400); margin-top:2px;">${timeStr || new Date().toLocaleTimeString()}</div>
+        </div>
+    `;
+    liveFeedContainer.prepend(card);
 }
 
 let lastDrawnFaces = [];
@@ -157,13 +190,11 @@ async function detectLoop() {
 
     isDetecting = true;
 
-    // Only resize canvas if dimensions actually changed (prevents canvas redraw flickering)
     if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
         canvas.width = video.clientWidth;
         canvas.height = video.clientHeight;
     }
 
-    // Use optimized resolution (380px) for ultra-fast network roundtrip
     const targetWidth = 380;
     const scaleFactor = targetWidth / video.videoWidth;
     const targetHeight = Math.round(video.videoHeight * scaleFactor);
@@ -193,11 +224,11 @@ async function detectLoop() {
         if (data.status === "low_light" || data.error === "low light") {
             lowLightCounter++;
             if (lowLightCounter >= 2 && fallbackAlert) {
-                if (fallbackIcon) fallbackIcon.innerText = "🌙";
-                if (fallbackTitle) fallbackTitle.innerText = "Low Lighting Detected";
-                if (fallbackSub) fallbackSub.innerText = "Camera lighting is dim. Biometrics may be impaired. You can switch to QR check-in:";
+                if (fallbackIcon) fallbackIcon.innerText = "\uD83C\uDF19";
+                if (fallbackTitle) fallbackTitle.innerText = "Sub-Optimal Lighting Detected";
+                if (fallbackSub) fallbackSub.innerText = "Facial recognition confidence may be reduced. Switch to instant QR check-in:";
                 fallbackAlert.style.display = "flex";
-                resultEl.innerHTML = "🌙 <b>Low lighting detected:</b> Please increase lighting or switch to QR.";
+                if (resultEl) resultEl.innerHTML = "<span style='color:#fde68a;'>Sub-optimal lighting: Please increase light or use Dynamic QR.</span>";
             }
         } else {
             lowLightCounter = 0;
@@ -211,7 +242,6 @@ async function detectLoop() {
             lastFaceSeen = Date.now();
         }
 
-        // Graceful persistence buffer (prevents rapid box blinking if a single frame drops)
         const facesToRender = (data.faces && data.faces.length > 0)
             ? data.faces
             : ((Date.now() - lastFaceSeen < 350) ? lastDrawnFaces : []);
@@ -223,7 +253,6 @@ async function detectLoop() {
             let newPrev = [];
 
             facesToRender.forEach((face, i) => {
-                // Scale back from 380px processing space to displayed canvas coordinates
                 const coordScaleX = video.clientWidth / targetWidth;
                 const coordScaleY = video.clientHeight / targetHeight;
 
@@ -251,18 +280,18 @@ async function detectLoop() {
                 const [drawX, drawY, drawW, drawH] = box.map(Math.round);
 
                 // Determine dynamic HUD color theme
-                let themeColor = "#3b82f6"; // Default blue
+                let themeColor = "#6366f1"; // Default Indigo
                 if (isUnknown) {
-                    themeColor = "#ef4444"; // Red for unregistered faces
+                    themeColor = "#f43f5e"; // Rose for unregistered faces
                 } else if (isMarked) {
-                    themeColor = "#eab308"; // Gold for already marked
+                    themeColor = "#10b981"; // Emerald for verified
                 } else if (livenessVerified) {
-                    themeColor = "#16a34a"; // Green for live verified
+                    themeColor = "#06b6d4"; // Cyan for live verified
                 }
 
                 // Render dynamic HUD bounding box
                 ctx.strokeStyle = themeColor;
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 2.5;
                 ctx.strokeRect(drawX, drawY, drawW, drawH);
 
                 // Label badge
@@ -270,16 +299,16 @@ async function detectLoop() {
                 ctx.fillRect(drawX, Math.max(0, drawY - 26), Math.max(160, drawW), 26);
 
                 ctx.fillStyle = "#ffffff";
-                ctx.font = "bold 13px sans-serif";
+                ctx.font = "bold 12px 'Plus Jakarta Sans', sans-serif";
                 let label = "";
                 if (isUnknown) {
-                    label = `⚠️ Unregistered Face (${Math.round(face.confidence * 100)}%)`;
+                    label = `Unregistered Face (${Math.round(face.confidence * 100)}%)`;
                 } else if (isMarked) {
-                    label = `✓ ${face.roll} (Marked)`;
+                    label = `\u2713 ${face.roll} (Verified)`;
                 } else {
                     label = `${face.roll} (${Math.round(face.confidence * 100)}%)`;
                     if (!livenessVerified) {
-                        label += " [Blink to verify]";
+                        label += " [Blink]";
                     }
                 }
                 ctx.fillText(label, drawX + 6, Math.max(18, drawY - 8));
@@ -299,10 +328,12 @@ async function detectLoop() {
                     })
                     .then(r => r.json())
                     .then(markData => {
+                        const nowTime = new Date().toLocaleTimeString();
+                        addLiveFeedCard(face.roll, face.confidence, nowTime);
                         if (markData.status === "marked") {
-                            resultEl.innerHTML = `✅ <b style="color:#16a34a;">Attendance Marked!</b><br>🎓 Student Roll: <b>${face.roll}</b> (Live Verified)`;
+                            if (resultEl) resultEl.innerHTML = `<span style="color:#34d399;">Attendance Recorded: <b>${face.roll}</b> (Live Verified)</span>`;
                         } else {
-                            resultEl.innerHTML = `⚠️ <b style="color:#ca8a04;">Already Marked Today</b><br>🎓 Student Roll: <b>${face.roll}</b>`;
+                            if (resultEl) resultEl.innerHTML = `<span style="color:#fde68a;">Already Logged Today: <b>${face.roll}</b></span>`;
                         }
                     })
                     .catch(err => {
@@ -314,23 +345,21 @@ async function detectLoop() {
             prevBoxes = newPrev;
 
         } else {
-            // Reset when face is out of view
             if (Date.now() - lastFaceSeen > 900) {
                 prevBoxes = [];
                 stableFrames = 0;
                 consecutiveRecognitionFrames = 0;
                 livenessVerified = false;
                 updateLivenessBadge(false);
-                resultEl.innerHTML = "🔍 Scanning for registered students...";
+                if (resultEl) resultEl.innerHTML = "Scanning camera field for student faces...";
             }
         }
 
     } catch (err) {
         console.error("[RECOGNIZE LOOP ERROR]:", err);
-        resultEl.innerHTML = "⚡ <b>Reconnecting:</b> Verifying camera feed stream...";
+        if (resultEl) resultEl.innerHTML = "<span style='color:#f87171;'>Camera stream sync reconnecting...</span>";
     } finally {
         isDetecting = false;
-        // Ultra-low latency loop continuation
         setTimeout(detectLoop, 30);
     }
 }

@@ -1,22 +1,85 @@
 {% extends "base.html" %}
+{% block title %}Biometric Face Enrollment &bull; VisionAttend Platform{% endblock %}
 {% block content %}
 
-<div class="card large" style="max-width:640px; text-align:center;">
-    <h2>👤 Biometric Face Enrollment</h2>
-    <h3 id="rollDisplay" style="color:#2563eb; margin:5px 0 15px 0; font-size:18px;"></h3>
-
-    <div class="video-wrapper">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="overlay"></canvas>
+<div style="max-width: 680px; margin: 0 auto;">
+    <!-- Step Indicator Banner -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <div style="display:flex; align-items:center; gap:0.75rem;">
+            <span class="badge badge-green" style="font-size:0.8rem; padding:0.3rem 0.75rem;">Step 2 of 2</span>
+            <span style="font-size:0.875rem; font-weight:700; color:var(--slate-700);">Biometric Facial Vector Extraction</span>
+        </div>
+        <span class="badge badge-blue" id="rollDisplay">Initializing...</span>
     </div>
 
-    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin:12px 0;">
-        <p id="status" style="margin:0; font-weight:500; font-size:14px; color:#334155;">Initializing camera...</p>
-    </div>
+    <div class="camera-viewport-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <div style="font-weight:700; font-size:1.05rem; display:flex; align-items:center; gap:0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary-500);">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+                AI Face Embedding Enrollment Viewport
+            </div>
+            <span class="badge badge-green" style="background:rgba(16,185,129,0.15); color:#34d399; border-color:rgba(16,185,129,0.3);">
+                5-Angle Sampling
+            </span>
+        </div>
 
-    <button id="startBtn" style="padding:12px 28px; font-size:15px;">
-        📸 Start 5-Shot Face Capture
-    </button>
+        <div class="video-container">
+            <video id="video" class="video-element" autoplay playsinline muted></video>
+            <canvas id="overlay" class="canvas-overlay"></canvas>
+            <!-- Corner Reticles -->
+            <div class="hud-corner hud-top-left"></div>
+            <div class="hud-corner hud-top-right"></div>
+            <div class="hud-corner hud-bottom-left"></div>
+            <div class="hud-corner hud-bottom-right"></div>
+        </div>
+
+        <!-- 5-Angle Sample Indicators -->
+        <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:0.5rem; margin-top:1.25rem;">
+            <div id="sampleStep1" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
+                <div style="font-weight:700;">1. Straight</div>
+                <div id="sampleStatus1" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+            </div>
+            <div id="sampleStep2" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
+                <div style="font-weight:700;">2. Upward</div>
+                <div id="sampleStatus2" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+            </div>
+            <div id="sampleStep3" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
+                <div style="font-weight:700;">3. Left</div>
+                <div id="sampleStatus3" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+            </div>
+            <div id="sampleStep4" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
+                <div style="font-weight:700;">4. Right</div>
+                <div id="sampleStatus4" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+            </div>
+            <div id="sampleStep5" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
+                <div style="font-weight:700;">5. Neutral</div>
+                <div id="sampleStatus5" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+            </div>
+        </div>
+
+        <div class="hud-telemetry-bar">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span class="pulse-dot"></span>
+                <span id="status" style="color:var(--slate-300);">Camera ready. Align face within viewport reticle.</span>
+            </div>
+            <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--slate-400);">
+                Resolution: 640x480 &bull; PyTorch InceptionResnet
+            </div>
+        </div>
+
+        <div style="margin-top:1.25rem; display:flex; gap:0.75rem;">
+            <button id="startBtn" class="btn btn-primary btn-block" style="padding:0.8rem; font-size:0.95rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polygon points="10 8 16 12 10 16 10 8"></polygon>
+                </svg>
+                Begin 5-Angle Face Capture
+            </button>
+        </div>
+    </div>
 </div>
 
 <script src="/static/js/capture.js"></script>

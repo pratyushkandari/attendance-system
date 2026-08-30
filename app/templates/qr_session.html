@@ -1,24 +1,54 @@
 {% extends "base.html" %}
+{% block title %}Dynamic QR Attendance Session &bull; VisionAttend Platform{% endblock %}
 {% block content %}
 
-<div class="card" style="max-width:480px; margin:auto; text-align:center; padding:30px;">
-    <h2>📱 Dynamic QR Attendance Session</h2>
-    <p style="color:#64748b; font-size:14px; margin-top:-5px;">
-        Scan this secure QR code using your mobile device.
-    </p>
-
-    <div style="background:#ffffff; padding:15px; border-radius:12px; display:inline-block; border:1px solid #e2e8f0; margin:15px 0;">
-        <img id="qrImage" width="240" height="240" alt="Attendance QR Code" style="display:block;" />
-    </div>
-
-    <!-- Security Indicator & Refresh Timer -->
-    <div style="margin-top:10px;">
-        <div style="height:6px; background:#e2e8f0; border-radius:4px; overflow:hidden; max-width:240px; margin:auto;">
-            <div id="countdownBar" style="height:100%; width:100%; background:#2563eb; transition:width 1s linear;"></div>
+<div style="max-width: 540px; margin: 0 auto;">
+    <div class="qr-presenter-card">
+        <div style="display:inline-flex; align-items:center; gap:0.4rem; padding:0.25rem 0.75rem; background:var(--primary-50); border:1px solid var(--primary-200); border-radius:var(--radius-full); font-size:0.75rem; font-weight:700; color:var(--primary-700); margin-bottom:1rem;">
+            <span class="pulse-dot"></span>
+            Live Attendance Session
         </div>
-        <p id="qrStatus" style="font-size:12px; color:#64748b; margin-top:8px;">
-            🔒 Cryptographically signed token • Refreshing in 5s
+
+        <h2 style="font-size:1.4rem; font-weight:800; color:var(--slate-900); letter-spacing:-0.02em; margin-bottom:0.4rem;">
+            Dynamic QR Check-In Terminal
+        </h2>
+        <p style="font-size:0.85rem; color:var(--slate-500); max-width:380px; margin:0 auto;">
+            Scan the rotating cryptographic code using your mobile camera or barcode scanner.
         </p>
+
+        <!-- QR Display Container -->
+        <div class="qr-frame">
+            <img id="qrImage" width="240" height="240" alt="Dynamic Cryptographic QR" style="display:block; border-radius:var(--radius-sm);" />
+        </div>
+
+        <!-- Rotating Token Countdown Bar -->
+        <div style="margin-top:0.5rem;">
+            <div class="qr-progress-track">
+                <div id="countdownBar" class="qr-progress-bar" style="transition:width 5s linear; width:0%;"></div>
+            </div>
+            <div id="qrStatus" style="font-size:0.775rem; color:var(--slate-500); margin-top:0.75rem; font-family:var(--font-mono); display:flex; align-items:center; justify-content:center; gap:0.4rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <span>HMAC-SHA256 Signed Token &bull; Refreshing in 5s</span>
+            </div>
+        </div>
+
+        <div style="margin-top:1.75rem; padding-top:1.25rem; border-top:1px solid var(--slate-100); display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem; font-size:0.72rem; color:var(--slate-500);">
+            <div style="background:var(--slate-50); padding:0.5rem; border-radius:var(--radius-sm); border:1px solid var(--slate-200);">
+                <div style="font-weight:700; color:var(--slate-700);">Zero-App</div>
+                <div>Standard Camera</div>
+            </div>
+            <div style="background:var(--slate-50); padding:0.5rem; border-radius:var(--radius-sm); border:1px solid var(--slate-200);">
+                <div style="font-weight:700; color:var(--slate-700);">Anti-Proxy</div>
+                <div>Time-Bound Window</div>
+            </div>
+            <div style="background:var(--slate-50); padding:0.5rem; border-radius:var(--radius-sm); border:1px solid var(--slate-200);">
+                <div style="font-weight:700; color:var(--slate-700);">Audit Trail</div>
+                <div>Instant Logging</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -42,13 +72,15 @@
             }
         } catch (err) {
             console.error("[QR GENERATE ERROR]:", err);
-            document.getElementById("qrStatus").innerText = "⚠️ Error fetching security token.";
+            const statusEl = document.getElementById("qrStatus");
+            if (statusEl) statusEl.innerText = "Error refreshing cryptographic security token.";
         }
     }
 
     function resetCountdown() {
         secondsLeft = 5;
         const bar = document.getElementById("countdownBar");
+        if (!bar) return;
         bar.style.transition = "none";
         bar.style.width = "100%";
 
@@ -58,7 +90,6 @@
         }, 50);
     }
 
-    // Initial load and recurring 5s rotation
     fetchDynamicQR();
     setInterval(fetchDynamicQR, 5000);
 </script>

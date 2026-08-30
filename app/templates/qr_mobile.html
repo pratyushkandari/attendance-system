@@ -1,21 +1,33 @@
 {% extends "qr_base.html" %}
+{% block title %}Verify Roll ID &bull; Mobile Check-In{% endblock %}
 {% block content %}
 
-<div class="card">
-    <div class="badge" style="background:#dbeafe; color:#1e40af;">
-        🔒 Verified QR Session
+<div class="mobile-card">
+    <div class="badge-status">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span>Cryptographic Session Active</span>
     </div>
     
-    <h2>Student Attendance</h2>
-    <p style="color:#64748b; font-size:14px; margin-top:-6px;">
-        Enter your Roll Number to record your presence
+    <h2>Student Verification</h2>
+    <p style="margin-top: 0.35rem;">
+        Enter your institutional Roll Number to record your session attendance.
     </p>
 
-    <input id="roll" placeholder="e.g. 2026CSE001" autocomplete="off" autocorrect="off" autocapitalize="characters" />
+    <input id="roll" class="input-mobile" placeholder="e.g. 2026CSE001" autocomplete="off" autocorrect="off" autocapitalize="characters" />
     
-    <button onclick="verify()">Verify Identity →</button>
+    <button onclick="verify()" class="btn-mobile">
+        Verify Student Identity &rarr;
+    </button>
     
-    <p id="msg" style="margin-top:14px; font-size:14px; color:#dc2626; font-weight:500;"></p>
+    <p id="msg" style="margin-top:1rem; font-size:0.8rem; color:#e11d48; font-weight:600; min-height:1.2rem;"></p>
+
+    <div class="footer-note">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        <span>VisionAttend Zero-Trust Token Auth</span>
+    </div>
 </div>
 
 <script src="/static/js/qr_mobile.js"></script>

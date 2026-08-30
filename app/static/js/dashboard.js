@@ -9,31 +9,53 @@ async function loadDashboard() {
         const data = await res.json();
         const today = new Date();
 
-        document.getElementById("todayDate").innerText =
-            "📅 " + today.toLocaleDateString("en-GB", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const todayEl = document.getElementById("todayDate");
+        if (todayEl) {
+            todayEl.innerText = today.toLocaleDateString("en-GB", { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+        }
 
-        document.getElementById("students").innerText = data.total_students ?? 0;
-        document.getElementById("present").innerText = data.present ?? 0;
-        document.getElementById("absent").innerText = data.absent ?? 0;
+        const total = data.total_students ?? 0;
+        const present = data.present ?? 0;
+        const absent = data.absent ?? 0;
+
+        const studentsEl = document.getElementById("students");
+        if (studentsEl) studentsEl.innerText = total;
+
+        const presentEl = document.getElementById("present");
+        if (presentEl) presentEl.innerText = present;
+
+        const absentEl = document.getElementById("absent");
+        if (absentEl) absentEl.innerText = absent;
+
+        const rateEl = document.getElementById("attendanceRate");
+        if (rateEl) {
+            const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
+            rateEl.innerText = `${percentage}% Verified`;
+        }
 
     } catch (err) {
         console.error("[DASHBOARD LOAD ERROR]:", err);
     }
 }
 
-async function clearRecords() {
-    if (!confirm("⚠️ Are you sure you want to permanently clear all attendance records?")) {
+async function confirmClearModal() {
+    if (!confirm("Are you sure you want to permanently clear all attendance records? This action cannot be undone.")) {
         return;
     }
 
     try {
         const res = await fetch("/clear_records", { method: "POST" });
         const data = await res.json();
-        alert(data.message || "Records Cleared.");
+        alert(data.message || "Attendance records successfully cleared.");
         loadDashboard();
     } catch (err) {
         console.error("[CLEAR ERROR]:", err);
-        alert("Failed to clear records.");
+        alert("Failed to clear attendance records.");
     }
 }
 
