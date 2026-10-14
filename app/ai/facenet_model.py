@@ -1,33 +1,45 @@
+import logging
+from typing import Any, Optional
 import cv2
 import numpy as np
 import torch
 from facenet_pytorch import MTCNN, InceptionResnetV1
 
+logger = logging.getLogger(__name__)
+
 # Optimize PyTorch CPU memory footprint for cloud containers
 torch.set_grad_enabled(False)
 torch.set_num_threads(1)
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
-_mtcnn_instance = None
-_resnet_instance = None
+_mtcnn_instance: Optional[MTCNN] = None
+_resnet_instance: Optional[InceptionResnetV1] = None
 
 
-def get_mtcnn():
-    """Lazy-loaded MTCNN singleton to minimize startup memory overhead."""
+def get_mtcnn() -> MTCNN:
+    """
+    Lazy-loaded MTCNN singleton to minimize startup memory overhead.
+
+    Configured with a 3-stage cascade threshold [0.6, 0.7, 0.7] and min_face_size=20.
+    """
     global _mtcnn_instance
     if _mtcnn_instance is None:
         _mtcnn_instance = MTCNN(
             keep_all=True,
             min_face_size=20,
             thresholds=[0.6, 0.7, 0.7],
-            device=device
+            device=device,
         )
     return _mtcnn_instance
 
 
-def get_resnet():
-    """Lazy-loaded InceptionResnetV1 singleton in evaluation mode."""
+def get_resnet() -> InceptionResnetV1:
+    """
+    Lazy-loaded InceptionResnetV1 singleton in strict evaluation mode.
+
+    Loads VGGFace2 pretrained weights producing unit-sphere projected 512-D embeddings.
+    """
     global _resnet_instance
     if _resnet_instance is None:
         _resnet_instance = InceptionResnetV1(pretrained="vggface2").eval().to(device)
@@ -36,20 +48,34 @@ def get_resnet():
 
 # Backward-compatible proxy object
 class MTCNNProxy:
-    def detect(self, *args, **kwargs):
+    """Dynamic proxy delegating calls to lazy-loaded MTCNN singleton."""
+
+    def detect(self, *args: Any, **kwargs: Any) -> Any:
         return get_mtcnn().detect(*args, **kwargs)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return get_mtcnn()(*args, **kwargs)
 
 
 mtcnn = MTCNNProxy()
 
 
-def get_embedding_from_crop(face_bgr_crop):
+def get_embedding_from_crop(face_bgr_crop: Optional[np.ndarray]) -> Optional[np.ndarray]:
     """
-    Directly extracts 512-D embedding from a cropped face image.
-    Uses zero-grad inference to keep memory under 150MB.
+    Extract a normalized 512-D facial embedding vector directly from a cropped BGR image.
+
+    Pipelines:
+        1. BGR -> RGB color space conversion.
+        2. Bilinear downsampling to model input dimensions (160x160).
+        3. Normalization to standard floating-point range [-1.0, 1.0].
+        4. InceptionResnetV1 forward-pass under `torch.no_grad()`.
+        5. L2-normalization to enforce unit hypersphere geometry.
+
+    Args:
+        face_bgr_crop: Cropped facial sub-image as a 3-channel BGR NumPy array.
+
+    Returns:
+        1D float32 NumPy array of shape (512,) with ||v||_2 = 1.0, or None if crop invalid.
     """
     try:
         if face_bgr_crop is None or face_bgr_crop.size == 0:
@@ -77,12 +103,18 @@ def get_embedding_from_crop(face_bgr_crop):
         return emb_np
 
     except Exception as e:
-        print(f"[AI Model Error] get_embedding_from_crop failed: {e}")
+        logger.error(f"[AI Model Error] get_embedding_from_crop failed: {e}", exc_info=True)
         return None
 
 
-def get_embedding(img_bgr):
+def get_embedding(img_bgr: Optional[np.ndarray]) -> Optional[np.ndarray]:
     """
-    Legacy wrapper that extracts embedding from a cropped face.
+    Legacy wrapper that extracts an embedding from a cropped face image.
+
+    Args:
+        img_bgr: Cropped facial sub-image as a 3-channel BGR NumPy array.
+
+    Returns:
+        1D float32 NumPy array of shape (512,) or None.
     """
     return get_embedding_from_crop(img_bgr)

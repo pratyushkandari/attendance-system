@@ -4,6 +4,11 @@ from app.extensions import db
 class Admin(db.Model):
     """
     Administrator entity storing secure credentials for system operators.
+
+    Attributes:
+        id: Primary key surrogate integer.
+        email: Unique login email identity.
+        password: Argon2id or bcrypt salted cryptographic hash.
     """
     __tablename__ = "admins"
 
@@ -11,5 +16,6 @@ class Admin(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password = db.Column(db.String(255), nullable=False)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Admin email='{self.email}'>"
+

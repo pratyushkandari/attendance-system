@@ -1,11 +1,16 @@
 import json
 from datetime import datetime
+from typing import Any, List, Optional, Sequence, Union
+import numpy as np
 from app.extensions import db
 
 
 class Student(db.Model):
     """
     Student entity representing enrolled university students with biometric profiles.
+
+    Stores academic metadata alongside 512-dimensional facial embedding vectors
+    projected onto the unit hypersphere for fast Euclidean/cosine biometric search.
     """
     __tablename__ = "students"
 
@@ -20,37 +25,42 @@ class Student(db.Model):
     # 512-Dimensional normalized facial vector stored as serialized JSON
     embedding = db.Column(db.Text)
 
-    def set_embedding(self, emb):
+    def set_embedding(self, emb: Optional[Union[np.ndarray, Sequence[float], List[float]]]) -> None:
         """
-        Serializes a NumPy 512-D unit vector into JSON string for PostgreSQL storage.
+        Serializes a 512-D unit vector into a JSON string for persistent storage.
 
         Args:
-            emb (numpy.ndarray or list): 512-D normalized vector array.
+            emb: 512-D normalized vector as a NumPy array or float sequence.
         """
         if emb is not None:
             if hasattr(emb, "tolist"):
-                self.embedding = json.dumps(emb.tolist())
+                self.embedding = json.dumps(emb.tolist())  # type: ignore[union-attr]
             else:
                 self.embedding = json.dumps(list(emb))
 
-    def get_embedding(self):
+    def get_embedding(self) -> Optional[List[float]]:
         """
-        Deserializes the stored JSON string back into a Python list.
+        Deserializes the stored JSON representation back into a Python float list.
 
         Returns:
-            list or None: 512-D embedding list.
+            List of 512 floats, or None if uninitialized.
         """
         if self.embedding:
             return json.loads(self.embedding)
         return None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Student roll='{self.roll}' email='{self.email}'>"
 
 
 class Attendance(db.Model):
     """
     Attendance log record storing timestamped check-in events.
+
+    Attributes:
+        roll: Student roll identifier matching `students.roll`.
+        method: Check-in modality ('Face' or 'QR').
+        timestamp: UTC datetime of successful verification.
     """
     __tablename__ = "attendance"
 
@@ -59,5 +69,5 @@ class Attendance(db.Model):
     method = db.Column(db.String(10), nullable=False)  # 'Face' or 'QR'
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Attendance roll='{self.roll}' method='{self.method}' time='{self.timestamp}'>"
