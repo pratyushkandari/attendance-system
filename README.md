@@ -9,35 +9,51 @@
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-HPA_Manifests-326CE5?style=flat-square&logo=kubernetes)](https://kubernetes.io)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-A high-performance attendance verification platform supporting real-time video facial recognition ($<40\text{ms}$ latency on CPU) and time-bound cryptographic dynamic QR check-ins. Built with Flask, PyTorch (InceptionResnetV1), OpenCV, PostgreSQL (`pgvector`), Redis, and Prometheus telemetry.
+A low-latency attendance verification system supporting 30 FPS facial recognition ($<45\text{ms}$ per-frame CPU budget) and 5-second rotating cryptographic dynamic QR check-ins. Built on Flask, PyTorch (`InceptionResnetV1`), OpenCV (CSRT object tracking), PostgreSQL (`pgvector`), Redis distributed caching, and Prometheus telemetry.
 
 🔗 **Live Deployment:** [https://attendance-system-60nr.onrender.com](https://attendance-system-60nr.onrender.com)
 
+---
+
+## Technical Documentation Suite
+
+For detailed technical specifications, architecture records, and operations manuals, refer to the documentation suite in `docs/`:
+
+* 🏛️ **[System Architecture Document (ARCHITECTURE.md)](ARCHITECTURE.md):** End-to-end data flow, inference pipelines, and memory models.
+* 📋 **[Architecture Decision Records (ADRs)](docs/ARCHITECTURE_DECISION_RECORDS.md):** 5 formal ADRs documenting trade-offs (MTCNN vs CSRT, BLAS SIMD vs Cosine loops, JWT vs Sessions).
+* 📡 **[REST API Specification](docs/API_SPECIFICATION.md):** Complete contract with request/response schemas, error codes, and headers.
+* 📊 **[Performance Benchmarks & Profiling](docs/BENCHMARKS.md):** Flamegraph analysis, $P_{50}/P_{95}/P_{99}$ latency budgets, and $N=50,000$ vector scalability curves.
+* 🛡️ **[Security Architecture & Threat Model](docs/SECURITY.md):** STRIDE analysis, NIST 800-63B password policy, and ISO/IEC 30107-3 liveness standards.
+* 🚨 **[Operations & Incident Runbook](docs/OPERATIONS_RUNBOOK.md):** SLOs, Prometheus alerting rules, and disaster recovery playbooks.
 
 ---
 
-## Overview & Motivation
+## Engineering Overview & Bottlenecks Solved
 
-Traditional attendance systems suffer from two main bottlenecks:
-1. **Biometric Inference Overhead:** Running deep-learning face detection (MTCNN) on every single video frame creates severe CPU/GPU bottlenecks, dropping video frame rates to 3–5 FPS.
-2. **Proxy Attendance in QR Systems:** Static QR codes posted in classrooms are easily photographed and shared via messaging apps, allowing students to check in remotely.
+### 1. The Deep Learning CPU Inference Bottleneck
+* **The Problem:** Running deep convolutional face detection (MTCNN) on every single video frame takes ~320ms on commodity CPU nodes, collapsing frame rates to 2–4 FPS.
+* **Our Solution:** A **hybrid 1:4 periodic detection schedule**. MTCNN runs on keyframes, while lightweight OpenCV CSRT trackers maintain bounding boxes between keyframes at ~8ms per frame, delivering a fluid 28–30 FPS terminal experience on standard CPU servers.
 
-This project addresses both problems through:
-* **Hybrid Computer Vision Pipeline:** MTCNN runs periodically (1 in 4 frames), while lightweight OpenCV CSRT trackers maintain bounding boxes between detections at 30+ FPS (<10ms CPU time).
-* **BLAS Vector Similarity:** Normalized 512-D face embeddings are matched against registered student matrices via single-instruction SIMD dot products (`np.dot(matrix, query_vector)`), executing in ~0.2ms for 10,000 profiles.
-* **Anti-Spoofing & Liveness:** Client-side Eye Aspect Ratio (EAR) contrast tracking requires natural eyelid blinking to verify live human presence before marking attendance.
-* **Environmental & Hardware Resilience:** Real-time luminance monitoring automatically detects dim lighting and camera disconnections, prompting a seamless 1-click fallback to dynamic QR attendance.
-* **Time-Bound Dynamic QR Tokens:** Server generates HMAC-SHA256 tokens with a 15-second TTL that auto-rotate every 5 seconds, preventing replay attacks.
-* **Hybrid Auth Layer:** Dual-mode authentication accepting either `Authorization: Bearer <jwt_token>` (for REST/mobile clients) or session cookies (for web dashboards) with sliding brute-force lockout.
+### 2. The $O(N)$ Vector Search Bottleneck
+* **The Problem:** Iterating through stored facial embeddings with Python loops and calculating pairwise cosine distances scales linearly ($O(N)$), adding unacceptable latency for large student cohorts.
+* **Our Solution:** Normalized 512-D unit vectors stacked into a contiguous 2D float32 matrix $\mathbf{E} \in \mathbb{R}^{N \times 512}$. Similarity matching executes via single-instruction **BLAS matrix-vector dot products (`np.dot(matrix, query)`)**, running in **0.19ms for 10,000 students**.
+
+### 3. Proxy Attendance in QR Check-in Systems
+* **The Problem:** Static QR codes posted in classrooms are photographed and forwarded to absent peers via messaging apps, allowing fraudulent remote check-ins.
+* **Our Solution:** **Time-bound dynamic HMAC-SHA256 tokens** generated on the server with a 15-second TTL that auto-rotate every 5 seconds. Forwarded photos expire before remote recipients can receive and submit them.
+
+### 4. Presentation Attacks (Photo & Video Spoofing)
+* **The Problem:** Holding a printed photograph or smartphone screen displaying an enrolled student's face to the kiosk camera.
+* **Our Solution:** Client-side **Eye Aspect Ratio (EAR) contrast gradient tracking**. The system requires natural eyelid blinking (variance dip and recovery within 40–1200ms) before permitting an attendance commit.
 
 ---
 
-## Architecture & Data Flow
+## Architectural Data Flow
 
 ```
 [Webcam Stream (30 FPS)]                  [Mobile QR Scan]
          │                                       │
-         ├──► Periodic MTCNN (1/8 frames)        ├──► Dynamic Token (15s TTL)
+         ├──► Periodic MTCNN (1/4 frames)        ├──► Dynamic Token (15s TTL)
          ├──► Inter-frame CSRT Tracking          └──► HMAC Signature Check
          ├──► EAR Blink Liveness Verification            │
          └──► Direct Tensor Crop to FaceNet              │
@@ -64,66 +80,49 @@ This project addresses both problems through:
 
 ---
 
-## Performance Benchmarks
+## Performance Benchmarks Summary
 
-Profiling measured on standard 4-core x86_64 CPU (without dedicated GPU):
+Measured on standard 4-Core x86_64 CPU (without dedicated GPU):
 
-| Pipeline Stage | Naive Approach | Implemented Approach | Speedup |
-| :--- | :--- | :--- | :--- |
-| **Face Detection per Frame** | MTCNN every frame (~320ms) | Hybrid CSRT Tracking (~8ms) | **40x** |
-| **Vector Similarity (10k DB)** | Python `for` loop (~15ms) | NumPy BLAS Dot Product (~0.2ms) | **75x** |
-| **Embedding Extraction** | Full image re-crop (~200ms) | Direct tensor crop (~38ms) | **5.2x** |
-| **QR Validation Latency** | DB read + state update (~8ms) | Stateless HMAC check (<0.1ms) | **80x** |
-| **Video Stream Throughput** | 2–4 FPS (Choppy) | 28–30 FPS (Real-time) | **Smooth** |
+| Pipeline Stage | Naive Approach | Implemented Approach | Speedup | Latency Impact |
+| :--- | :--- | :--- | :---: | :---: |
+| **Face Detection per Frame** | MTCNN every frame (~320ms) | Hybrid CSRT Tracking (~8ms) | **40.0x** | Enables 30 FPS stream |
+| **Vector Similarity ($N=10\text{k}$)** | Python `for` loops (~15ms) | NumPy BLAS Dot Product (~0.2ms) | **75.0x** | Sub-millisecond matching |
+| **Embedding Extraction** | Full image re-crop (~200ms) | Direct tensor crop (~38ms) | **5.2x** | Low CPU footprint |
+| **QR Validation Latency** | DB read + lock (~8ms) | Stateless HMAC check (<0.1ms) | **80.0x** | High throughput |
+| **Video Stream Throughput** | 2–4 FPS (Choppy) | 28–30 FPS (Fluid) | **Smooth** | Real-time terminal |
 
 ---
 
-## REST API Contract
+## Core API Contract Summary
 
-### Authentication
+Complete documentation with request payloads and schemas is in [docs/API_SPECIFICATION.md](docs/API_SPECIFICATION.md).
 
-#### `POST /login_admin`
-Authenticates administrator credentials and returns a 24-hour JWT token.
 ```bash
+# 1. Administrator Authentication (Returns 24h Bearer JWT)
 curl -X POST http://localhost:5000/login_admin \
   -H "Content-Type: application/json" \
-  -d '{"email": "admin@example.com", "password": "securepassword"}'
-```
-Response:
-```json
-{
-  "status": "success",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "Bearer",
-  "expires_in": 86400,
-  "user": "admin@example.com"
-}
-```
+  -d '{"email": "admin@institution.edu", "password": "AdminSecure@2026!"}'
 
-### Attendance & Verification
+# 2. Student Enrollment
+curl -X POST http://localhost:5000/register \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"first_name": "Alexander", "last_name": "Wright", "department": "CSE", "year": "2026", "email": "a.wright@institution.edu"}'
 
-#### `POST /mark_attendance`
-Logs attendance record idempotently for the current calendar day.
-
-**Via Dynamic QR Token:**
-```bash
+# 3. Dynamic QR Attendance Check-In
 curl -X POST http://localhost:5000/mark_attendance \
   -H "Content-Type: application/json" \
   -d '{"roll": "2026CSE001", "method": "QR", "qr_token": "<token>"}'
-```
 
-**Via Facial Recognition (Admin authorized):**
-```bash
-curl -X POST http://localhost:5000/mark_attendance \
+# 4. Stream Exported Attendance Ledger (CSV)
+curl -X GET "http://localhost:5000/export_records?dept=CSE" \
   -H "Authorization: Bearer <jwt_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"roll": "2026CSE001", "method": "Face"}'
+  -o attendance_report.csv
+
+# 5. Prometheus Metrics Telemetry
+curl -X GET http://localhost:5000/metrics
 ```
-
-### Telemetry
-
-#### `GET /metrics`
-Prometheus metrics export exposing request counts, connection gauges, and latency histograms (p50, p95, p99).
 
 ---
 
@@ -131,69 +130,79 @@ Prometheus metrics export exposing request counts, connection gauges, and latenc
 
 ### Prerequisites
 * Python 3.10+
-* Docker & Docker Compose (optional, for full multi-container stack)
+* PostgreSQL 16 (or SQLite development fallback)
+* Redis (optional; automatically falls back to in-memory TTL cache)
 
-### 1. Virtual Environment Setup
+### 1. Environment Setup
 ```bash
 # Clone repository
 git clone https://github.com/pratyushkandari/attendance-system.git
 cd attendance-system
 
-# Create and activate virtual environment
+# Create virtual environment
 python -m venv venv
 source venv/bin/activate  # On Windows: .\venv\Scripts\activate
 
-# Install dependencies
+# Install CPU PyTorch build & dependencies
+pip install --upgrade pip
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 
 ### 2. Environment Configuration
-Copy the configuration template:
 ```bash
 cp .env.example .env
 ```
 Default parameters in `.env`:
-* `DATABASE_URL`: PostgreSQL connection string (falls back to local SQLite if empty)
-* `SECRET_KEY`: Master cryptographic signing secret
-* `LOCKOUT_THRESHOLD`: 3 failed attempts (15-min cooldown)
+* `DATABASE_URL`: PostgreSQL connection string (`postgresql://postgres:postgres@localhost:5432/attendence_db`).
+* `SECRET_KEY`: Master cryptographic signing secret.
+* `LOCKOUT_THRESHOLD`: 3 failed attempts (15-min cooldown).
 
-### 3. Run the Application
+### 3. Database Initialization & Seed
+```bash
+# Run schema and seed script via PostgreSQL CLI
+psql -U postgres -d attendence_db -f seed.sql
+```
+*Default Operator Account:* `admin@institution.edu` / `AdminSecure@2026!`
+
+### 4. Run Application
 ```bash
 python run.py
 ```
-App runs locally at `http://localhost:5000`.
+* Server binds to `http://localhost:5000`.
 
 ---
 
-## Running with Docker Compose
+## Docker Compose Deployment
 
-To launch the full 5-service infrastructure (Flask Application, PostgreSQL with `pgvector`, Redis, Prometheus, and Grafana):
+To spin up the complete 5-container infrastructure (Flask App, PostgreSQL with `pgvector`, Redis 7, Prometheus, and Grafana):
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
 ### Service Map:
-* **Web & API Server:** `http://localhost:5000`
+* **Web Gateway & API:** `http://localhost:5000`
 * **Prometheus Metrics:** `http://localhost:9090`
-* **Grafana Dashboard:** `http://localhost:3000` (`admin` / `admin`)
+* **Grafana Dashboards:** `http://localhost:3000` (Default credentials: `admin` / `admin`)
 * **PostgreSQL:** `localhost:5432`
+* **Redis:** `localhost:6379`
 
 ---
 
-## Test Suite & Validation
+## Automated Test Suite
 
-The codebase includes 23 unit and integration tests covering authentication, cryptographic tokens, vector mathematics, and API route safety.
+The codebase includes **28 automated unit and integration tests** with continuous coverage assertions:
 
 ```bash
-# Run pytest suite
-pytest -v
+# Run test suite
+python -m pytest -v
 
-# Run with test coverage report
-pytest --cov=app --cov-report=term-missing
+# Run with terminal coverage report
+python -m pytest --cov=app --cov-report=term-missing
 ```
 
-### Test Coverage Areas:
+### Test Coverage Highlights:
 * `tests/test_auth.py`: JWT token generation, Bearer header authorization, expired/tampered token rejection, NIST 800-63B password complexity, salted cryptographic password hashing, RFC 5322 email validation, and sliding brute-force lockout.
 * `tests/test_crypto.py`: Dynamic QR HMAC serialization, signature verification, instant expiration handling, and SafeCacheStore Redis/in-memory TTL cache.
 * `tests/test_vector.py`: Cosine similarity mathematics, zero-division guardrails, and BLAS matrix dot product matching.
@@ -201,49 +210,35 @@ pytest --cov=app --cov-report=term-missing
 
 ---
 
-## Fault Tolerance & Real-World Edge Cases
+## Kubernetes Production Deployment
 
-| Failure Mode / Edge Case | Engineering Mitigation | System Behavior |
-| :--- | :--- | :--- |
-| **Dim Classroom Lighting** | Grayscale luminance check ($\text{mean} < 35$) | Displays smart interactive prompt ➔ 1-click switch to Dynamic QR attendance |
-| **Webcam Unplugged / Blocked** | `getUserMedia` hardware exception trapping | Catches error safely and routes user to Mobile QR check-in session |
-| **Unregistered Person in View** | Biometric similarity $< 0.70$ filter | Visualizes red HUD box `⚠️ Unregistered Face (xx%)` with zero DB commits |
-| **Static Photo Presentation** | Client-side Eye Aspect Ratio (EAR) contrast variance | Requires real eyelid blink before triggering attendance submission |
-| **Brute-Force Login Attacks** | Exponential attempt tracking in Redis / RAM | 3 failed attempts triggers automatic 15-minute sliding lockout |
-| **Cloud DB Idle Disconnections** | `pool_pre_ping: True` + `pool_recycle: 280` | Pre-validates stale connections and reconnects without dropping HTTP requests |
-| **Peak Attendance Traffic Rush** | Gunicorn WSGI multi-threading + K8s HPA | Auto-scales pods from 2 to 10 instances based on CPU utilization |
-
----
-
-## Cloud Orchestration & Kubernetes Deployment
-
-Enterprise declarative manifests are provided in the `k8s/` directory:
+Enterprise declarative manifests are provided in `k8s/`:
 
 ```bash
-# Apply ConfigMap, Deployment, Service, and HPA
+# Apply ConfigMap, Deployment, Service, and HorizontalPodAutoscaler
 kubectl apply -f k8s/configmap.yaml
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
 kubectl apply -f k8s/hpa.yaml
 
-# Check running pods & auto-scaling metrics
+# Verify pod status and auto-scaling metrics
 kubectl get pods -l app=attendance-system
 kubectl get hpa attendance-hpa
 ```
 
 ---
 
-## Continuous Integration
+## Continuous Integration & Quality Gate
 
-The `.github/workflows/ci.yml` pipeline automatically runs on every push and pull request:
-1. Installs system dependencies (`libgl1`, `libglib2.0-0`).
-2. Runs `ruff` for code style and formatting checks.
-3. Runs `bandit` for static security vulnerability scanning.
-4. Executes the full 28-test `pytest` test suite with coverage assertions.
+The [.github/workflows/ci.yml](.github/workflows/ci.yml) workflow triggers on every push and pull request:
+1. Installs OpenCV system dependencies (`libgl1`, `libglib2.0-0`).
+2. Installs lightweight CPU-only PyTorch and project dependencies.
+3. Runs `ruff` for code style and PEP 8 compliance.
+4. Executes `bandit` for static application security testing (SAST).
+5. Executes the full **28-test automated pytest suite** with coverage reporting.
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
-
+This project is open-source under the [MIT License](LICENSE).
