@@ -26,7 +26,7 @@ Running deep multi-task cascaded convolutional neural networks (P-Net, R-Net, O-
 Decouple face localization from identity recognition by implementing a 1:4 periodic detection schedule paired with continuous object tracking:
 1. **Periodic Keyframe Detection:** Run MTCNN only once every 4 frames (or whenever the active tracker list drops to zero).
 2. **Inter-Frame Correlation Tracking:** Between MTCNN passes, hand off detected coordinates to OpenCV Channel and Spatial Reliability Trackers (`cv2.TrackerCSRT` or legacy KCF fallback). CSRT executes in ~8ms on CPU, sustaining a fluid 28–30 FPS display rate.
-3. **Multi-Camera Isolation:** Scope tracker instances and frame counts to a client-generated UUID (`client_id`) stored in an in-memory session registry with a 120-second inactivity TTL.
+3. **Multi-Camera Isolation:** Scope tracker instances and frame counts to a client-generated ID (`client_id`) stored in a lock-guarded, per-process in-memory session registry with a 120-second inactivity TTL.
 
 ### Consequences
 * **Positive:** Reduced CPU frame-processing latency from 320ms to under 40ms (~8x speedup). Eliminates GPU dependency for edge classroom kiosks.
@@ -62,7 +62,7 @@ The entire enrolled student vector base is stacked into a contiguous 2D float32 
 
 ### Alternatives Considered
 * *Iterative Python Cosine Loops:* Rejected due to $O(N)$ interpreter overhead and GIL lock contention.
-* *PostgreSQL pgvector HNSW Index:* Maintained in schema for cold persistence and external querying; in-memory BLAS preferred for hot real-time video frames to avoid network round-trip overhead.
+* *PostgreSQL pgvector HNSW Index:* Not adopted. Embeddings are stored as JSON text in `students.embedding` and matched in memory; the Docker Compose stack uses the `pgvector/pgvector` image, but the extension is not used by the application.
 
 ---
 
@@ -80,12 +80,12 @@ The platform serves two fundamentally distinct client archetypes:
 Implement a hybrid authentication resolver (`@admin_required` decorator) evaluating credentials in prioritized sequence:
 1. **Priority 1 (Stateless API):** Inspect `Authorization: Bearer <token>` header. Validate HMAC-SHA256 cryptographic signature and expiry claim (`exp`) using stateless JWT. If valid, inject claims into request context and bypass session store.
 2. **Priority 2 (Web Portal):** Inspect cryptographically signed Flask session cookie. Validate authenticated admin email.
-3. **Failure:** For JSON/API endpoints, return `401 Unauthorized` with structured JSON payload. For interactive HTML routes, redirect to `/admin_login`.
+3. **Failure:** For JSON/API endpoints, return `401 Unauthorized` with structured JSON payload. For interactive HTML routes, redirect to the login page (`/`).
 
 ### Consequences
 * **Positive:** Unified access-control policy across human browser interactions and programmatic REST clients.
 * **Positive:** Microservice-ready; downstream microservices can validate the self-contained JWT token without querying a central session database.
-* **Negative:** Revoking an active JWT token before its 24-hour expiration requires blacklist synchronization in Redis.
+* **Negative:** Tokens cannot be revoked before their 24-hour expiration; a revocation list (e.g. in Redis) is not implemented.
 
 ---
 
@@ -102,11 +102,12 @@ Implement dynamic, time-bound rotating QR codes with cryptographic signature ver
 1. **Token Composition:** The server generates a payload comprising a unique 12-character cryptographic nonce and Unix timestamp:
    $$\text{Payload} = \{\text{nonce}: \text{UUID4}_{[:12]}, \text{created\_at}: \text{EpochTime}\}$$
 2. **Cryptographic Signing:** Payload is serialized and signed using `URLSafeTimedSerializer` with master `SECRET_KEY` and salt `qr-attendance-token`.
-3. **Rotation & TTL:** Kiosk UI refreshes the QR code every 5 seconds. The token carries a 15-second expiration threshold (with a 15-second grace window on ingestion to accommodate cellular latency).
-4. **Idempotent Ledger:** Student submissions commit to the ledger under an atomic unique constraint on `(roll, date)`.
+3. **Rotation & TTL:** Kiosk UI refreshes the QR code every 5 seconds and advertises a 15-second validity. The server accepts tokens up to 30 seconds old at `/verify_qr_token` and up to 35 seconds old for the student lookup and `/mark_attendance`, to absorb cellular latency and typing time.
+4. **Idempotent Ledger:** `/mark_attendance` checks for an existing `(roll, IST date)` record before inserting (application-level check; there is no database unique constraint).
 
 ### Consequences
-* **Positive:** Eliminates remote photo-forwarding attacks; forwarded QR images expire before a remote user can receive and submit the payload.
+* **Positive:** Shrinks remote photo-forwarding attacks to a ~35-second window; older forwarded QR images are rejected.
+* **Negative:** Because the whole class scans the same rotating code, a token cannot be single-use; anyone holding a fresh token can submit any registered roll number within the window.
 * **Positive:** Entire verification pipeline is stateless, executing HMAC signature validation in under 0.1ms without database locking.
 * **Negative:** Requires dynamic classroom display (monitor/tablet) connected to the kiosk server.
 
@@ -118,13 +119,14 @@ Implement dynamic, time-bound rotating QR codes with cryptographic signature ver
 **Accepted**
 
 ### Context
-The application utilizes distributed caching for sliding brute-force rate-limiting (3 failed attempts $\rightarrow$ 15-minute lockout) and QR nonce de-duplication. In containerized environments or developer local setups, an external Redis service may experience network partitions, configuration errors, or cold restarts. A hard dependency on Redis would cause total application downtime during cache outages.
+The application uses a shared cache for brute-force login lockout counters (3 failed attempts $\rightarrow$ 15-minute lockout) so the limit holds across Gunicorn workers and pods. In containerized environments or developer local setups, an external Redis service may experience network partitions, configuration errors, or cold restarts. A hard dependency on Redis would cause total application downtime during cache outages.
 
 ### Decision
 Implement `SafeCacheStore` encapsulation wrapping `redis.from_url` with automatic fallback to an in-memory dictionary store featuring timestamp-based TTL eviction:
 1. On initialization, test Redis connectivity with a 1-second timeout `socket_connect_timeout=1`.
 2. If Redis is reachable, operations (`set`, `get`, `delete`) execute against the distributed cluster.
 3. If Redis raises an exception or is offline, the store sets `_redis_available = False` and routes operations to `_memory_cache` with expiry checking (`time.time() > exp`).
+4. While degraded, Redis is re-probed with `PING` at most every 30 seconds; once it answers, operations move back to Redis (values written to memory during the outage are not migrated).
 
 ### Consequences
 * **Positive:** Zero service downtime if Redis fails; core authentication, rate limiting, and attendance verification continue functioning transparently.

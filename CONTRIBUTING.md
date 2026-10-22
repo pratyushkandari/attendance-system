@@ -8,7 +8,7 @@ Thank you for your interest in contributing to the **Enterprise Biometric Attend
 
 ### Prerequisites
 - Python 3.9+ (Python 3.10 recommended)
-- PostgreSQL 14+ (or local SQLite fallback)
+- PostgreSQL 14+ (or SQLite for local development via `DATABASE_URL=sqlite:///attendance.db`)
 - Redis 7+ (optional; transparent in-memory fallback enabled)
 - Git 2.30+
 
@@ -23,8 +23,9 @@ python -m venv venv
 source venv/bin/activate       # On Linux/macOS
 .\venv\Scripts\Activate.ps1    # On Windows PowerShell
 
-# Install dependencies
+# Install dependencies (CPU-only PyTorch first, as in CI and the Dockerfile)
 pip install --upgrade pip
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 
 # Configure environment variables
@@ -65,7 +66,9 @@ We enforce the [Conventional Commits](https://www.conventionalcommits.org/) spec
 Pull Requests will not be merged unless:
 1. **100% of existing test cases pass** with zero warnings or deprecation regressions.
 2. **New endpoints or business logic are accompanied by automated tests** under `tests/`.
-3. Code coverage does not drop below the repository baseline ($>85\%$).
+3. Code coverage does not drop below the current baseline (about 70% line+branch; the model-inference code needs downloaded weights and is verified end to end instead).
+
+The suite uses an in-memory SQLite database and the in-process cache (see `tests/conftest.py`), so it never touches your local PostgreSQL or Redis.
 
 ### Running Test Suites
 ```bash
@@ -75,8 +78,8 @@ python -m pytest -v
 # Run with coverage report
 python -m pytest --cov=app --cov-report=term-missing tests/
 
-# Execute end-to-end integration scenario
-python -m pytest tests/test_attendance.py -k "test_e2e"
+# Run only the attendance / API integration tests
+python -m pytest tests/test_attendance.py
 ```
 
 ---

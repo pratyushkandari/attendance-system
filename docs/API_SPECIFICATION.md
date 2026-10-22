@@ -28,8 +28,11 @@ Cookie: session=<signed_flask_session_cookie>
 Cookies include standard security flags: `HttpOnly`, `SameSite=Lax`, `Path=/`.
 
 ### 1.3 Rate Limiting & Account Protection
-* **Sliding Lockout Window:** 3 consecutive failed authentication attempts against an institutional email trigger an automatic **15-minute temporary lockout** (`403 Forbidden`).
+* **Lockout Window:** `LOCKOUT_THRESHOLD` (default 3) failed attempts against an email within `LOCKOUT_DURATION_SECONDS` (default 900) trigger a **temporary lockout** (`403 Forbidden`). Counters are stored in Redis when `REDIS_URL` is set (shared by all workers), otherwise in process memory.
 * **Lockout Reset:** A successful login clears the failed counter immediately.
+
+### 1.4 Request Bodies
+All `POST` endpoints expect `Content-Type: application/json`. A missing or malformed JSON body is treated as empty and answered with the endpoint's normal `400` JSON error.
 
 ---
 
@@ -80,7 +83,10 @@ Authenticates administrative credentials and issues a stateless 24-hour Bearer J
 #### `POST /register_admin`
 Provisions a new administrator profile with NIST 800-63B password complexity enforcement and salted cryptographic hashing.
 
-* **Security:** Unrestricted during initial bootstrap; rate-limited and audit-logged.
+* **Access Control:**
+  * While **no administrator exists**, anyone may call it (initial bootstrap from the login page).
+  * Afterwards, the caller must be an authenticated admin (session cookie or Bearer JWT).
+  * `ALLOW_PUBLIC_ADMIN_SIGNUP=true` reopens anonymous signup (public demos only).
 * **Request Body:**
   ```json
   {
@@ -105,6 +111,7 @@ Provisions a new administrator profile with NIST 800-63B password complexity enf
   * `400 Bad Request`: `{"status": "weak_password", "message": "Password must contain at least one special symbol."}`
   * `400 Bad Request`: `{"status": "invalid_email", "message": "Email address format is invalid."}`
   * `400 Bad Request`: `{"status": "exists", "message": "An administrator with this email already exists."}`
+  * `403 Forbidden`: `{"status": "forbidden", "message": "Administrator registration is closed. Ask an existing administrator to create your account."}`
 
 ---
 
@@ -124,6 +131,7 @@ Enrolls student metadata into the PostgreSQL database and automatically computes
     "email": "a.wright@institution.edu"
   }
   ```
+* **Validation:** all fields required; `year` must be 4 digits (string or number); `department` must be a 2–10 letter code (stored upper-case); names ≤ 100 characters; email ≤ 120 characters.
 * **Roll Generation Formula:**
   $$\text{Roll} = \text{Year} + \text{Dept} + \text{PadZeroes}(\text{MaxSeq} + 1, 3) \quad \rightarrow \quad \text{2026CSE042}$$
 * **Success Response (`200 OK`):**
@@ -134,7 +142,7 @@ Enrolls student metadata into the PostgreSQL database and automatically computes
   }
   ```
 * **Error Responses:**
-  * `400 Bad Request`: Missing required field or invalid email format.
+  * `400 Bad Request`: Missing/invalid field (e.g. `{"error": "Year must be a 4-digit year (e.g. 2026)"}`) or invalid email format.
   * `400 Bad Request`: Email already registered.
   * `401 Unauthorized`: Missing or invalid Bearer token / session.
 
@@ -159,7 +167,7 @@ Processes a base64-encoded webcam frame, runs MTCNN face localization, filters s
   }
   ```
 * **Quality Guardrails:**
-  * Minimum MTCNN face detection probability: $\ge 0.90$.
+  * Minimum MTCNN face detection probability: $\ge$ `MTCNN_CONFIDENCE_THRESHOLD` (default 0.90).
   * Minimum face crop dimensions: $40 \times 40 \text{ px}$.
   * Graceful rejection on missing or low-confidence faces without 500 error propagation:
     ```json
@@ -187,6 +195,7 @@ Aggregates 5 distinct facial angle samples (front, tilted up, left 15°, right 1
     ]
   }
   ```
+* **Validation:** `embeddings` must be a list of 1–20 vectors of exactly 512 finite numbers; otherwise `400 Bad Request`. Unknown roll → `404 Not Found`.
 * **Success Response (`200 OK`):**
   ```json
   {
@@ -239,7 +248,7 @@ Ingests an active video frame from an interactive kiosk client, performs periodi
 ### 2.4 Attendance Verification & Dynamic QR
 
 #### `POST /mark_attendance`
-Commits an idempotent attendance record for a student for the current calendar date in Indian Standard Time (IST, UTC+5:30).
+Commits an idempotent attendance record for a student for the current calendar date in Indian Standard Time (IST, UTC+5:30). The roll lookup is case-insensitive (`2026cse042` matches `2026CSE042`).
 
 * **Modality 1: Facial Biometrics (`method: "Face"`)**
   * Requires authenticated session or Bearer JWT token.
@@ -251,7 +260,7 @@ Commits an idempotent attendance record for a student for the current calendar d
     }
     ```
 * **Modality 2: Dynamic QR Scan (`method: "QR"`)**
-  * Public student smartphone endpoint (gated by cryptographic signature).
+  * Public student smartphone endpoint (gated by cryptographic signature; tokens older than 35 s are rejected).
   * Request Body:
     ```json
     {
@@ -275,7 +284,7 @@ Commits an idempotent attendance record for a student for the current calendar d
   }
   ```
 * **Error Responses:**
-  * `400 Bad Request`: `{"status": "error", "message": "QR code expired. Please rescan."}`
+  * `400 Bad Request`: `{"status": "error", "message": "QR code expired. Please rescan."}` or `"Invalid QR code signature."`
   * `401 Unauthorized`: Unauthenticated face submission.
   * `404 Not Found`: Roll number is not registered in system.
 
@@ -297,7 +306,7 @@ Generates a time-bound HMAC-SHA256 cryptographically signed dynamic token for ac
 ---
 
 #### `POST /verify_qr_token`
-Validates whether a scanned QR token has a valid signature and has not expired past its validity window.
+Validates whether a scanned QR token has a valid signature and is at most 30 seconds old.
 
 * **Request Body:**
   ```json
@@ -315,9 +324,34 @@ Validates whether a scanned QR token has a valid signature and has not expired p
   ```json
   {
     "valid": false,
-    "error": "QR token expired. Please rescan."
+    "error": "QR code expired. Please rescan."
   }
   ```
+
+---
+
+#### `POST /verify_student`
+Checks whether a roll number exists. Used by the student's phone after scanning the classroom QR code.
+
+* **Access Control:** a live QR token in the body (≤ 35 s old) **or** admin credentials.
+* **Request Body:**
+  ```json
+  { "roll": "2026cse042", "token": "<QR token>" }
+  ```
+* **Success Response (`200 OK`):** `{"success": true, "roll": "2026CSE042"}` (canonical roll) or `{"success": false, "roll": null}`.
+* **Error Responses:** `400` missing roll; `401` missing/expired/invalid QR token.
+
+---
+
+#### `GET /get_student/<roll>`
+Returns the public profile shown on the phone's confirmation screen.
+
+* **Access Control:** `X-QR-Token: <QR token>` header (≤ 35 s old) **or** admin credentials.
+* **Success Response (`200 OK`):**
+  ```json
+  { "roll": "2026CSE042", "first_name": "Alexander", "last_name": "Wright", "department": "CSE", "year": "2026" }
+  ```
+* **Error Responses:** `401` missing/expired/invalid QR token; `404` unknown roll.
 
 ---
 
@@ -344,6 +378,24 @@ Retrieves all historical attendance events chronologically grouped by calendar d
     ]
   }
   ```
+* **Error Response (`500`):** `{"error": "Failed to load attendance records."}`
+
+---
+
+#### `GET /dashboard_data`
+Today's (IST) headline counts for the dashboard.
+
+* **Access Control:** Admin required.
+* **Success Response (`200 OK`):** `{"total_students": 120, "present": 87, "absent": 33}`
+* **Error Response (`500`):** same keys set to `0` plus an `error` message.
+
+---
+
+#### `POST /clear_records`
+Deletes **all** attendance records.
+
+* **Access Control:** Admin required.
+* **Success Response (`200 OK`):** `{"status": "cleared", "message": "All attendance records cleared."}`
 
 ---
 
@@ -355,6 +407,7 @@ Streams an RFC 4180 compliant CSV export file containing attendance logs enriche
   * `date`: Filter by `YYYY-MM-DD`
   * `dept`: Filter by department code (`CSE`, `ECE`)
   * `roll`: Filter by specific student roll number
+* **Error Response:** `400 Bad Request` if `date` is not `YYYY-MM-DD`.
 * **Headers Returned:**
   ```http
   Content-Type: text/csv
@@ -376,5 +429,6 @@ Exposes system runtime telemetry for Prometheus ingestion in OpenMetrics format.
   * `http_request_duration_seconds_bucket{le="0.05", endpoint="attendance.recognize_with_box"}`
   * `attendance_marked_total{method="Face"}`
   * `attendance_marked_total{method="QR"}`
-  * `active_camera_clients_total`
-  * `liveness_detection_total{status="verified"}`
+  * `active_camera_clients_total` (kiosk sessions active in the last 120 s, per process)
+
+Liveness is evaluated in the kiosk browser, so there is no server-side liveness metric.

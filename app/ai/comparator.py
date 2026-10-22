@@ -1,6 +1,8 @@
 import logging
 from typing import List, Optional, Sequence, Tuple, Union
+
 import numpy as np
+
 from .face_utils import cosine_similarity
 
 logger = logging.getLogger(__name__)
@@ -67,7 +69,7 @@ def vectorized_matrix_match(
         return None, -1.0
 
     try:
-        rolls, embeddings_list = zip(*student_profiles)
+        rolls, embeddings_list = zip(*student_profiles)  # noqa: B905 (py3.9 has no strict=)
         matrix = np.vstack(embeddings_list)  # Matrix shape: (N, 512)
 
         # High-speed SIMD matrix-vector dot product (BLAS C-level execution)

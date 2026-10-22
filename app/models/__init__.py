@@ -1,2 +1,4 @@
 from .admin import Admin
-from .student import Student, Attendance
+from .student import Attendance, Student
+
+__all__ = ["Admin", "Attendance", "Student"]

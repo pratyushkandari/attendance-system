@@ -1,28 +1,46 @@
+const FACE_BADGE = `<span class="badge badge-blue"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg> Face Biometrics</span>`;
+const QR_BADGE = `<span class="badge badge-green"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg> Dynamic QR</span>`;
+
+function renderMessageRow(table, title, detail, isError) {
+    table.innerHTML = `
+        <tr>
+            <td colspan="3" style="text-align:center; padding:3rem 1rem; color:var(--slate-400);">
+                <div class="msg-title" style="font-size:1.1rem; font-weight:700; color:${isError ? "var(--rose-600)" : "var(--slate-700)"}; margin-bottom:0.35rem;"></div>
+                <div class="msg-detail" style="font-size:0.8rem;"></div>
+            </td>
+        </tr>`;
+    table.querySelector(".msg-title").textContent = title;
+    table.querySelector(".msg-detail").textContent = detail;
+}
+
 async function loadRecords() {
+    const table = document.getElementById("table");
+    if (!table) return;
+
     try {
         const res = await fetch("/records");
         if (res.status === 401) {
             window.location.href = "/";
             return;
         }
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
 
         const data = await res.json();
-        const table = document.getElementById("table");
-
-        if (!table) return;
         table.innerHTML = "";
 
         if (typeof data === "object" && !Array.isArray(data)) {
-            const sortedDates = Object.keys(data).sort((a, b) => new Date(b) - new Date(a));
+            // Keys are ISO dates (YYYY-MM-DD), so a string sort is a chronological sort
+            const sortedDates = Object.keys(data).sort().reverse();
 
             if (sortedDates.length === 0) {
-                table.innerHTML = `
-                    <tr>
-                        <td colspan="3" style="text-align:center; padding:3rem 1rem; color:var(--slate-400);">
-                            <div style="font-size:1.1rem; font-weight:700; color:var(--slate-700); margin-bottom:0.35rem;">No Verification Records Found</div>
-                            <div style="font-size:0.8rem;">Attendance events marked via Biometric Face or Dynamic QR will appear here.</div>
-                        </td>
-                    </tr>`;
+                renderMessageRow(
+                    table,
+                    "No Verification Records Found",
+                    "Attendance events marked via Biometric Face or Dynamic QR will appear here.",
+                    false
+                );
                 return;
             }
 
@@ -47,27 +65,26 @@ async function loadRecords() {
 
                 const headerRow = document.createElement("tr");
                 headerRow.innerHTML = `
-                    <th style="width:40%;">Student Roll ID</th>
-                    <th style="width:30%;">Verification Channel</th>
-                    <th style="width:30%;">Recorded Timestamp</th>
+                    <th scope="col" style="width:40%;">Student Roll ID</th>
+                    <th scope="col" style="width:30%;">Verification Channel</th>
+                    <th scope="col" style="width:30%;">Recorded Timestamp</th>
                 `;
                 table.appendChild(headerRow);
 
-                const sortedRecords = data[date].sort((a, b) => {
-                    return new Date(`${date} ${b.time}`) - new Date(`${date} ${a.time}`);
-                });
+                // Times are zero-padded HH:MM:SS strings, so compare them as text
+                // (parsing "YYYY-MM-DD HH:MM:SS" with Date is not portable across browsers).
+                const sortedRecords = [...data[date]].sort((a, b) => b.time.localeCompare(a.time));
 
                 sortedRecords.forEach(r => {
                     const row = document.createElement("tr");
-                    const methodBadge = r.method === "Face" 
-                        ? `<span class="badge badge-blue"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg> Face Biometrics</span>`
-                        : `<span class="badge badge-green"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg> Dynamic QR</span>`;
-
                     row.innerHTML = `
-                        <td><span style="font-family:var(--font-mono); font-weight:700; color:var(--slate-900);">${r.roll}</span></td>
-                        <td>${methodBadge}</td>
-                        <td><span style="font-family:var(--font-mono); font-size:0.8rem; color:var(--slate-600);">${r.time}</span></td>
+                        <td><span class="roll-cell" style="font-family:var(--font-mono); font-weight:700; color:var(--slate-900);"></span></td>
+                        <td>${r.method === "Face" ? FACE_BADGE : QR_BADGE}</td>
+                        <td><span class="time-cell" style="font-family:var(--font-mono); font-size:0.8rem; color:var(--slate-600);"></span></td>
                     `;
+                    // Server values are inserted as text, never as HTML
+                    row.querySelector(".roll-cell").textContent = r.roll;
+                    row.querySelector(".time-cell").textContent = r.time;
                     table.appendChild(row);
                 });
             });
@@ -75,17 +92,31 @@ async function loadRecords() {
 
     } catch (err) {
         console.error("[LOAD RECORDS ERROR]:", err);
+        renderMessageRow(
+            table,
+            "Unable to Load Records",
+            "The attendance ledger could not be retrieved. Please refresh the page or try again shortly.",
+            true
+        );
     }
 }
 
 async function clearRecords() {
-    if (!confirm("Are you sure you want to permanently purge all attendance logs? This action is recorded in audit logs.")) {
+    if (!confirm("Are you sure you want to permanently purge all attendance logs? This action cannot be undone.")) {
         return;
     }
 
     try {
         const res = await fetch("/clear_records", { method: "POST" });
-        const data = await res.json();
+        if (res.status === 401) {
+            window.location.href = "/";
+            return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            alert(data.error || "Failed to clear records.");
+            return;
+        }
         alert(data.message || "All attendance records purged.");
         loadRecords();
     } catch (err) {
@@ -95,7 +126,10 @@ async function clearRecords() {
 }
 
 function formatDate(dateStr) {
-    const d = new Date(dateStr);
+    // Parse YYYY-MM-DD as a *local* date; new Date("YYYY-MM-DD") is UTC midnight and
+    // shows the previous day in timezones behind UTC.
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const d = new Date(year, month - 1, day);
     return d.toLocaleDateString("en-GB", {
         weekday: "short",
         day: "2-digit",

@@ -1,23 +1,25 @@
 async function loadDashboard() {
+    const todayEl = document.getElementById("todayDate");
+    if (todayEl) {
+        todayEl.innerText = new Date().toLocaleDateString("en-GB", {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    }
+
     try {
         const res = await fetch("/dashboard_data");
         if (res.status === 401) {
             window.location.href = "/";
             return;
         }
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
 
         const data = await res.json();
-        const today = new Date();
-
-        const todayEl = document.getElementById("todayDate");
-        if (todayEl) {
-            todayEl.innerText = today.toLocaleDateString("en-GB", { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-        }
 
         const total = data.total_students ?? 0;
         const present = data.present ?? 0;
@@ -40,6 +42,9 @@ async function loadDashboard() {
 
     } catch (err) {
         console.error("[DASHBOARD LOAD ERROR]:", err);
+        // Leave the "--" placeholders and say why, instead of showing stale or zero counts
+        const rateEl = document.getElementById("attendanceRate");
+        if (rateEl) rateEl.innerText = "Stats unavailable";
     }
 }
 
@@ -50,7 +55,15 @@ async function confirmClearModal() {
 
     try {
         const res = await fetch("/clear_records", { method: "POST" });
-        const data = await res.json();
+        if (res.status === 401) {
+            window.location.href = "/";
+            return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            alert(data.error || "Failed to clear attendance records.");
+            return;
+        }
         alert(data.message || "Attendance records successfully cleared.");
         loadDashboard();
     } catch (err) {

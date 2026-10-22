@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 1. Flask Application Service
   app:
@@ -12,6 +10,7 @@ services:
       - "5000:5000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/attendence_db
+      - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=production-secure-random-secret-key-xyz-987654321
       - PYTHONUNBUFFERED=1
     depends_on:
@@ -22,7 +21,7 @@ services:
     networks:
       - attendance_net
 
-  # 2. PostgreSQL with pgvector extension Service
+  # 2. PostgreSQL Service (pgvector image; embeddings are currently stored as JSON text)
   db:
     image: pgvector/pgvector:pg16
     container_name: attendance_postgres

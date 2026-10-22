@@ -1,8 +1,20 @@
 import json
-from datetime import datetime
-from typing import Any, List, Optional, Sequence, Union
+from datetime import datetime, timedelta
+from typing import List, Optional, Sequence, Union
+
 import numpy as np
+
 from app.extensions import db
+
+# Indian Standard Time offset. Attendance timestamps are stored as *naive* IST wall-clock
+# datetimes so that "today" and the times shown in the UI/CSV match the institution's
+# local day without timezone conversion in every query.
+IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def ist_now() -> datetime:
+    """Return the current Indian Standard Time (UTC+5:30) as a naive datetime."""
+    return datetime.utcnow() + IST_OFFSET
 
 
 class Student(db.Model):
@@ -49,6 +61,22 @@ class Student(db.Model):
             return json.loads(self.embedding)
         return None
 
+    @classmethod
+    def find_by_roll(cls, roll: str) -> Optional["Student"]:
+        """
+        Look up a student by roll number, tolerating lower-case input.
+
+        Generated rolls are upper-case (e.g. ``2026CSE001``) but students type them on
+        phones, so an exact match is tried first and an upper-cased match second. Both
+        lookups use the unique index on ``students.roll``.
+        """
+        if not roll:
+            return None
+        student = cls.query.filter_by(roll=roll).first()
+        if student is None and roll != roll.upper():
+            student = cls.query.filter_by(roll=roll.upper()).first()
+        return student
+
     def __repr__(self) -> str:
         return f"<Student roll='{self.roll}' email='{self.email}'>"
 
@@ -57,17 +85,21 @@ class Attendance(db.Model):
     """
     Attendance log record storing timestamped check-in events.
 
+    At most one record per roll per IST calendar day is written; this is enforced by
+    an application-level check in ``mark_attendance`` (there is no database-level
+    unique constraint).
+
     Attributes:
         roll: Student roll identifier matching `students.roll`.
         method: Check-in modality ('Face' or 'QR').
-        timestamp: UTC datetime of successful verification.
+        timestamp: Naive IST (UTC+5:30) datetime of successful verification.
     """
     __tablename__ = "attendance"
 
     id = db.Column(db.Integer, primary_key=True)
     roll = db.Column(db.String(50), nullable=False, index=True)
     method = db.Column(db.String(10), nullable=False)  # 'Face' or 'QR'
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    timestamp = db.Column(db.DateTime, default=ist_now, index=True)
 
     def __repr__(self) -> str:
         return f"<Attendance roll='{self.roll}' method='{self.method}' time='{self.timestamp}'>"

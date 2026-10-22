@@ -9,8 +9,8 @@
         </svg>
     </div>
 
-    <h2 style="color:#0f172a; margin-bottom:0.4rem;">Attendance Recorded!</h2>
-    <p style="margin-bottom:1.5rem;">
+    <h2 id="resultTitle" style="color:#0f172a; margin-bottom:0.4rem;">Attendance Recorded!</h2>
+    <p id="resultMessage" style="margin-bottom:1.5rem;">
         Your presence has been cryptographically validated and committed to the attendance database.
     </p>
 
@@ -21,7 +21,7 @@
         </div>
         <div style="display:flex; justify-content:space-between;">
             <span style="color:var(--slate-500);">Status:</span>
-            <span style="font-weight:700; color:var(--emerald-700);">Confirmed &amp; Logged</span>
+            <span id="resultStatus" style="font-weight:700; color:var(--emerald-700);">Confirmed &amp; Logged</span>
         </div>
     </div>
 
@@ -29,5 +29,17 @@
         <p style="font-size:0.75rem; color:var(--slate-400);">You may now close this browser tab.</p>
     </div>
 </div>
+
+<script>
+    // /mark_attendance answers "already marked today" when a record exists for today;
+    // say so instead of claiming a new record was written.
+    if (sessionStorage.getItem("qr_result_status") === "already marked today") {
+        document.getElementById("resultTitle").textContent = "Already Recorded Today";
+        document.getElementById("resultMessage").textContent =
+            "Your attendance for today was already in the attendance database. No new entry was created.";
+        document.getElementById("resultStatus").textContent = "Previously Logged";
+    }
+    sessionStorage.removeItem("qr_result_status");
+</script>
 
 {% endblock %}

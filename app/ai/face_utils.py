@@ -2,12 +2,13 @@
 Mathematical vector utility functions for biometric similarity search.
 """
 
-from typing import Union, Sequence
+from typing import Sequence, Union
+
 import numpy as np
 
 
 def cosine_similarity(
-    a: Union[np.ndarray, Sequence[float]], 
+    a: Union[np.ndarray, Sequence[float]],
     b: Union[np.ndarray, Sequence[float]]
 ) -> float:
     """

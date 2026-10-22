@@ -9,8 +9,17 @@ window.onload = async () => {
     }
 
     try {
-        const res = await fetch("/get_student/" + encodeURIComponent(roll));
+        // The live QR token authorises this lookup (see /get_student)
+        const res = await fetch("/get_student/" + encodeURIComponent(roll), {
+            headers: { "X-QR-Token": token }
+        });
         const data = await res.json();
+
+        if (res.status === 401) {
+            alert(data.error || "QR code expired. Please rescan the classroom QR code.");
+            window.location.href = "/qr_mobile";
+            return;
+        }
 
         if (data.error) {
             alert("Student record not found.");
@@ -31,7 +40,7 @@ window.onload = async () => {
 async function confirmAttendance() {
     const roll = sessionStorage.getItem("qr_roll");
     const token = sessionStorage.getItem("qr_token");
-    const btn = document.querySelector("button");
+    const btn = document.getElementById("confirmBtn");
 
     if (!roll || !token) {
         alert("Session expired. Please scan QR again.");
@@ -57,6 +66,8 @@ async function confirmAttendance() {
         if (data.status === "marked" || data.status === "already marked today") {
             sessionStorage.removeItem("qr_roll");
             sessionStorage.removeItem("qr_token");
+            // Lets the result page say whether this was a new or an existing record
+            sessionStorage.setItem("qr_result_status", data.status);
             window.location.href = "/qr_result";
         } else {
             alert(data.message || "Failed to mark attendance.");

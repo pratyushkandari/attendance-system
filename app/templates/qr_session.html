@@ -31,7 +31,7 @@
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                 </svg>
-                <span>HMAC-SHA256 Signed Token &bull; Refreshing in 5s</span>
+                <span id="qrStatusText" aria-live="polite">HMAC-SHA256 Signed Token &bull; Refreshing in 5s</span>
             </div>
         </div>
 
@@ -53,45 +53,59 @@
 </div>
 
 <script>
-    let countdownInterval = null;
-    let secondsLeft = 5;
+    const QR_REFRESH_MS = 5000;
+    const STATUS_OK = "HMAC-SHA256 Signed Token \u2022 Refreshing in 5s";
+
+    function setQrStatus(text, isError) {
+        const statusText = document.getElementById("qrStatusText");
+        if (!statusText) return;
+        statusText.textContent = text;
+        statusText.style.color = isError ? "var(--rose-600)" : "";
+    }
 
     async function fetchDynamicQR() {
         try {
             const res = await fetch("/generate_qr_token");
+            if (res.status === 401) {
+                // Admin session expired: a stale code would keep being shown otherwise
+                window.location.href = "/";
+                return;
+            }
             const data = await res.json();
 
-            if (data.status === "success" && data.token) {
+            if (res.ok && data.status === "success" && data.token) {
                 const baseUrl = window.location.origin;
                 const dynamicUrl = `${baseUrl}/qr_mobile?token=${encodeURIComponent(data.token)}`;
 
+                // The QR image is rendered by the public api.qrserver.com service
                 document.getElementById("qrImage").src =
                     `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(dynamicUrl)}&t=${Date.now()}`;
 
+                setQrStatus(STATUS_OK, false);
                 resetCountdown();
+            } else {
+                throw new Error(data.error || `HTTP ${res.status}`);
             }
         } catch (err) {
             console.error("[QR GENERATE ERROR]:", err);
-            const statusEl = document.getElementById("qrStatus");
-            if (statusEl) statusEl.innerText = "Error refreshing cryptographic security token.";
+            setQrStatus("Error refreshing cryptographic security token. Retrying...", true);
         }
     }
 
     function resetCountdown() {
-        secondsLeft = 5;
         const bar = document.getElementById("countdownBar");
         if (!bar) return;
         bar.style.transition = "none";
         bar.style.width = "100%";
 
         setTimeout(() => {
-            bar.style.transition = "width 5s linear";
+            bar.style.transition = `width ${QR_REFRESH_MS / 1000}s linear`;
             bar.style.width = "0%";
         }, 50);
     }
 
     fetchDynamicQR();
-    setInterval(fetchDynamicQR, 5000);
+    setInterval(fetchDynamicQR, QR_REFRESH_MS);
 </script>
 
 {% endblock %}

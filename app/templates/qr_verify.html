@@ -23,7 +23,7 @@
         <p id="dept" style="margin:0; font-weight:700; color:var(--slate-700); font-size:0.9rem;">Retrieving metadata...</p>
     </div>
 
-    <button onclick="confirmAttendance()" class="btn-mobile" style="background:linear-gradient(135deg, #059669, #047857); box-shadow:0 4px 12px rgba(5,150,105,0.3);">
+    <button id="confirmBtn" type="button" onclick="confirmAttendance()" class="btn-mobile" style="background:linear-gradient(135deg, #059669, #047857); box-shadow:0 4px 12px rgba(5,150,105,0.3);">
         Confirm &amp; Log Presence &rarr;
     </button>
 
@@ -33,6 +33,6 @@
     </div>
 </div>
 
-<script src="/static/js/qr_verify.js"></script>
+<script src="/static/js/qr_verify.js?v=2.4.3"></script>
 
 {% endblock %}

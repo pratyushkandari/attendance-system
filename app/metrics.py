@@ -1,5 +1,5 @@
 import time
-from typing import Any
+
 from flask import Flask, Response, request
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -30,15 +30,11 @@ ATTENDANCE_MARKED_TOTAL: Counter = Counter(
     ["method"],
 )
 
+# Number of kiosk tracking sessions seen in the last 120 s by *this* process.
+# Updated by /recognize_with_box; each Gunicorn worker/pod reports its own value.
 ACTIVE_CAMERA_CLIENTS: Gauge = Gauge(
     "active_camera_clients_total",
     "Current count of active real-time webcam client sessions",
-)
-
-LIVENESS_DETECTION_TOTAL: Counter = Counter(
-    "liveness_detection_total",
-    "Total biometric liveness / blink checks processed",
-    ["status"],
 )
 
 

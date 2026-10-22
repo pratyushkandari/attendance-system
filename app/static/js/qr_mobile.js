@@ -8,13 +8,15 @@ window.onload = () => {
 
     if (token) {
         sessionStorage.setItem("qr_token", token);
+        // Drop the token from the address bar so it is not kept in history or shared
+        window.history.replaceState(null, "", window.location.pathname);
     } else if (!sessionStorage.getItem("qr_token")) {
         msg.innerHTML = "⚠️ <b>Invalid Session:</b> Missing security token.<br>Please scan the live classroom QR code.";
     }
 
     if (rollInput) {
         rollInput.focus();
-        rollInput.addEventListener("keypress", (e) => {
+        rollInput.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
                 verify();
             }
@@ -22,10 +24,16 @@ window.onload = () => {
     }
 };
 
+let isVerifying = false;
+
 async function verify() {
+    if (isVerifying) return;
+
     const rollInput = document.getElementById("roll");
     const msg = document.getElementById("msg");
-    const roll = rollInput.value.trim();
+    const btn = document.getElementById("verifyBtn");
+    // Rolls are stored upper-case (e.g. 2026CSE001); the input only *displays* upper-case
+    const roll = rollInput.value.trim().toUpperCase();
     const token = sessionStorage.getItem("qr_token");
 
     if (!roll) {
@@ -38,6 +46,8 @@ async function verify() {
         return;
     }
 
+    isVerifying = true;
+    if (btn) btn.disabled = true;
     msg.innerText = "Verifying security token and student record...";
 
     try {
@@ -54,17 +64,19 @@ async function verify() {
             return;
         }
 
-        // Step 2: Verify student exists
+        // Step 2: Verify student exists (the live QR token authorises the lookup)
         const res = await fetch("/verify_student", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ roll: roll })
+            body: JSON.stringify({ roll: roll, token: token })
         });
         const data = await res.json();
 
         if (data.success) {
-            sessionStorage.setItem("qr_roll", roll);
+            sessionStorage.setItem("qr_roll", data.roll || roll);
             window.location.href = "/qr_verify";
+        } else if (res.status === 401) {
+            msg.innerText = `❌ ${data.message || "QR code expired. Please rescan."}`;
         } else {
             msg.innerText = "❌ Student roll number not found.";
         }
@@ -72,5 +84,8 @@ async function verify() {
     } catch (err) {
         console.error("[QR VERIFY ERROR]:", err);
         msg.innerText = "⚠️ Network error. Please try again.";
+    } finally {
+        isVerifying = false;
+        if (btn) btn.disabled = false;
     }
 }

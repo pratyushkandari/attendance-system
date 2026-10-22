@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap');
+/* Fonts are loaded via <link> tags in base.html (an @import here would block rendering). */
 
 :root {
   --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -35,6 +35,7 @@
   --amber-50: #fffbeb;
   --amber-500: #f59e0b;
   --amber-600: #d97706;
+  --amber-700: #b45309;
 
   --rose-50: #fff1f2;
   --rose-500: #f43f5e;
@@ -839,8 +840,14 @@ body {
   border-radius: var(--radius-lg);
   border: 2px solid var(--slate-100);
   display: inline-block;
+  max-width: 100%;
   margin: 1.5rem 0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.qr-frame img {
+  max-width: 100%;
+  height: auto;
 }
 
 .qr-progress-track {
@@ -906,14 +913,81 @@ body {
   gap: 0.75rem;
 }
 
+/* Text-style button (used for "Initialize Admin Profile" / "Return to Sign In") */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--primary-600);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* Visible keyboard focus for interactive elements (mouse clicks are unaffected) */
+.btn:focus-visible,
+.nav-link:focus-visible,
+.action-tile:focus-visible,
+.link-button:focus-visible,
+.brand-wrapper:focus-visible {
+  outline: 3px solid var(--primary-500);
+  outline-offset: 2px;
+}
+
+/* Live kiosk: camera feed + attendance feed side by side on wide screens */
+.kiosk-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .kiosk-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
+  /* Keep navigation (including Sign Out) reachable on phones and tablets: the menu
+     drops below the brand row and scrolls horizontally instead of being hidden. */
   .app-navbar {
-    padding: 0 1rem;
+    padding: 0.5rem 1rem;
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
   }
   .nav-menu {
-    display: none; /* Can be enhanced or stacked on mobile */
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+  }
+  .nav-link {
+    flex-shrink: 0;
+    white-space: nowrap;
   }
   .main-content {
     padding: 1.25rem 1rem 3rem 1rem;
+  }
+  .card-panel {
+    padding: 1.25rem;
+  }
+  .qr-presenter-card {
+    padding: 1.75rem 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-subtitle {
+    display: none;
+  }
+  .metrics-grid,
+  .quick-actions-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

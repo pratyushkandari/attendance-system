@@ -22,7 +22,7 @@
     </div>
 </div>
 
-<div style="display:grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr); gap:1.5rem; align-items:start;" class="kiosk-grid">
+<div class="kiosk-grid">
     
     <!-- LEFT: Camera HUD Viewfinder -->
     <div class="camera-viewport-card">
@@ -56,7 +56,7 @@
         <div class="hud-telemetry-bar">
             <div style="display:flex; align-items:center; gap:0.6rem;">
                 <span class="pulse-dot"></span>
-                <span id="result" style="color:var(--slate-200); font-weight:600;">Scanning camera field for student faces...</span>
+                <span id="result" style="color:var(--slate-200); font-weight:600;" aria-live="polite">Scanning camera field for student faces...</span>
             </div>
             <div style="font-family:var(--font-mono); font-size:0.725rem; color:var(--slate-400);">
                 SIMD Vector Search: 0.2ms &bull; 30 FPS CPU
@@ -92,7 +92,7 @@
         </div>
 
         <p style="font-size:0.8rem; color:var(--slate-500); margin-bottom:1rem;">
-            Students verified by facial centroid matching (confidence &ge; 70%) and eye-blink anti-spoofing are automatically committed to the database.
+            Students recognised by facial centroid matching (default confidence &ge; 70%) are committed to the database only after their own eye-blink is detected.
         </p>
 
         <div id="liveFeedContainer" style="display:flex; flex-direction:column; gap:0.65rem; min-height:220px; max-height:360px; overflow-y:auto; padding-right:4px;">
@@ -117,6 +117,6 @@
     </div>
 </div>
 
-<script src="/static/js/recognize.js"></script>
+<script src="/static/js/recognize.js?v=2.4.3"></script>
 
 {% endblock %}
