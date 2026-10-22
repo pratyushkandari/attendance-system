@@ -1,64 +1,114 @@
-import io
-import csv
 import base64
+import csv
+import io
+import logging
+import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any, Dict
+
 import cv2
 import numpy as np
-from flask import Blueprint, request, jsonify, session, Response
+from flask import Blueprint, Response, current_app, jsonify, request
 from sqlalchemy import func
-from itsdangerous import SignatureExpired, BadSignature
 
-from app.models import Student, Attendance
-from app.extensions import db, cache
-from app.routes.main import admin_required, get_qr_serializer, decode_jwt_token
-from app.ai.facenet_model import mtcnn, get_embedding_from_crop
-from app.ai.face_utils import cosine_similarity
+from app.ai.comparator import vectorized_matrix_match
+from app.ai.facenet_model import get_embedding_from_crop, mtcnn
+from app.extensions import db
+from app.metrics import ACTIVE_CAMERA_CLIENTS, ATTENDANCE_MARKED_TOTAL
+from app.models import Attendance, Student
+from app.models.student import ist_now
+from app.routes.main import (
+    QR_TOKEN_SUBMIT_MAX_AGE,
+    admin_required,
+    check_qr_token,
+    get_json_body,
+    get_str_field,
+    is_admin_request,
+)
+
+logger = logging.getLogger(__name__)
 
 attendance_bp = Blueprint("attendance", __name__)
 
-
-# ---------------- IST TIMEZONE HELPER ----------------
-def get_ist_now():
-    """Returns current datetime in Indian Standard Time (UTC+5:30)."""
-    return datetime.utcnow() + timedelta(hours=5, minutes=30)
+EMBEDDING_DIM = 512
 
 
 # ---------------- MULTI-CLIENT SESSION TRACKER ----------------
 # Stores: client_id -> {"trackers": [...], "tracker_data": [...], "frame_count": int, "last_active": float}
-tracking_sessions = {}
+# State is per process: with several Gunicorn workers or pods, a kiosk whose frames land
+# on a different process simply starts a fresh tracker set (MTCNN re-detects next frame).
+TRACKER_SESSION_TTL_SECONDS = 120
+tracking_sessions: Dict[str, Dict[str, Any]] = {}
+# Guards the registry dict itself; Gunicorn serves requests from several threads, and
+# iterating it while another thread inserts would raise "dictionary changed size".
+_tracking_lock = threading.Lock()
 
 
 def get_client_tracker_session(client_id):
     now = time.time()
-    # Periodic cleanup of sessions inactive for > 2 minutes
-    stale_keys = [k for k, v in tracking_sessions.items() if now - v["last_active"] > 120]
-    for k in stale_keys:
-        del tracking_sessions[k]
+    with _tracking_lock:
+        # Periodic cleanup of sessions inactive for > 2 minutes
+        stale_keys = [k for k, v in tracking_sessions.items() if now - v["last_active"] > TRACKER_SESSION_TTL_SECONDS]
+        for k in stale_keys:
+            del tracking_sessions[k]
 
-    if client_id not in tracking_sessions:
-        tracking_sessions[client_id] = {
-            "trackers": [],
-            "tracker_data": [],
-            "frame_count": 0,
-            "last_active": now
-        }
-    else:
-        tracking_sessions[client_id]["last_active"] = now
+        if client_id not in tracking_sessions:
+            tracking_sessions[client_id] = {
+                "trackers": [],
+                "tracker_data": [],
+                "frame_count": 0,
+                "last_active": now
+            }
+        else:
+            tracking_sessions[client_id]["last_active"] = now
 
-    return tracking_sessions[client_id]
+        ACTIVE_CAMERA_CLIENTS.set(len(tracking_sessions))
+        return tracking_sessions[client_id]
+
+
+def _create_tracker():
+    """Return a CSRT tracker (KCF fallback) from whichever OpenCV API is available."""
+    if hasattr(cv2, "TrackerCSRT_create"):
+        return cv2.TrackerCSRT_create()
+    if hasattr(cv2, "legacy") and hasattr(cv2.legacy, "TrackerCSRT_create"):
+        return cv2.legacy.TrackerCSRT_create()
+    if hasattr(cv2, "TrackerKCF_create"):
+        return cv2.TrackerKCF_create()
+    return None
+
+
+def _load_student_profiles():
+    """Return [(roll, 512-D float32 vector)] for every student with a valid face profile."""
+    profiles = []
+    for s in Student.query.filter(Student.embedding.isnot(None)).all():
+        saved_emb = s.get_embedding()
+        # Skip malformed vectors: one wrong-sized row would make np.vstack fail and turn
+        # every face into "Unknown" for the whole kiosk.
+        if saved_emb and len(saved_emb) == EMBEDDING_DIM:
+            profiles.append((s.roll, np.array(saved_emb, dtype=np.float32)))
+    return profiles
 
 
 # ---------------- RECOGNIZE WITH MULTI-FACE TRACKING ----------------
 @attendance_bp.route("/recognize_with_box", methods=["POST"])
 @admin_required
 def recognize_with_box():
-    try:
-        data = request.json or {}
-        image_raw = data.get("image", "")
-        client_id = data.get("client_id", "default_camera")
+    """
+    Detect, identify and track faces in one kiosk video frame.
 
-        if not image_raw or "," not in image_raw:
+    MTCNN + FaceNet run on every 4th frame per client (or when nothing is tracked);
+    in between, per-client CSRT trackers move the last known boxes. Returns
+    ``{"faces": [{"roll", "confidence", "is_unknown", "box": [x, y, w, h]}]}`` in the
+    coordinate space of the submitted frame. Errors are reported in the JSON body
+    with HTTP 200 so the kiosk loop keeps running.
+    """
+    try:
+        data = get_json_body()
+        image_raw = data.get("image", "")
+        client_id = get_str_field(data, "client_id")[:64] or "default_camera"
+
+        if not isinstance(image_raw, str) or "," not in image_raw:
             return jsonify({"faces": [], "error": "Invalid image data."})
 
         image_data = image_raw.split(",")[1]
@@ -97,20 +147,18 @@ def recognize_with_box():
                 session_data["trackers"] = []
                 session_data["tracker_data"] = []
             else:
+                detection_threshold = float(current_app.config.get("MTCNN_CONFIDENCE_THRESHOLD", 0.90))
+                match_threshold = float(current_app.config.get("FACE_MATCH_THRESHOLD", 0.70))
+
                 new_trackers = []
                 new_tracker_data = []
 
-                # Fetch all student embeddings once
-                students = Student.query.all()
-                student_profiles = []
-                for s in students:
-                    saved_emb = s.get_embedding()
-                    if saved_emb:
-                        student_profiles.append((s.roll, np.array(saved_emb, dtype=np.float32)))
+                # Fetch all student embeddings once per keyframe
+                student_profiles = _load_student_profiles()
 
                 for i, box in enumerate(boxes):
                     # MTCNN confidence filter
-                    if probs is not None and probs[i] < 0.92:
+                    if probs is not None and probs[i] < detection_threshold:
                         continue
 
                     x1, y1, x2, y2 = box
@@ -122,6 +170,7 @@ def recognize_with_box():
                     if w < 45 or h < 45:
                         continue
 
+                    # Reject tiny or flat (near-uniform) crops that cannot carry identity
                     face_crop = frame[y:y+h, x:x+w]
                     if face_crop.size == 0 or np.std(face_crop) < 18:
                         continue
@@ -130,32 +179,14 @@ def recognize_with_box():
                     if emb is None:
                         continue
 
-                    best_match = None
-                    best_score = -1.0
-
-                    if student_profiles:
-                        rolls, embeddings_list = zip(*student_profiles)
-                        matrix = np.vstack(embeddings_list)  # Matrix of shape (N, 512)
-                        
-                        # Vectorized matrix dot product across all registered embeddings
-                        scores = np.dot(matrix, emb)
-                        best_idx = int(np.argmax(scores))
-                        best_score = float(scores[best_idx])
-                        best_match = rolls[best_idx]
-
-                    # Match threshold classification
-                    is_match = (best_score >= 0.70 and best_match is not None)
+                    # Vectorized dot product against all enrolled unit vectors
+                    best_match, best_score = vectorized_matrix_match(
+                        emb, student_profiles, threshold=match_threshold
+                    )
+                    is_match = best_match is not None
                     roll_label = best_match if is_match else "Unknown"
 
-                    # Instantiate tracker safely
-                    tracker = None
-                    if hasattr(cv2, "TrackerCSRT_create"):
-                        tracker = cv2.TrackerCSRT_create()
-                    elif hasattr(cv2, "legacy") and hasattr(cv2.legacy, "TrackerCSRT_create"):
-                        tracker = cv2.legacy.TrackerCSRT_create()
-                    elif hasattr(cv2, "TrackerKCF_create"):
-                        tracker = cv2.TrackerKCF_create()
-
+                    tracker = _create_tracker()
                     if tracker is not None:
                         try:
                             tracker.init(frame, (x, y, w, h))
@@ -166,7 +197,7 @@ def recognize_with_box():
                                 "is_unknown": not is_match
                             })
                         except Exception as te:
-                            print("[TRACKER INIT WARNING]:", te)
+                            logger.warning("[TRACKER INIT WARNING]: %s", te)
 
                 session_data["trackers"] = new_trackers
                 session_data["tracker_data"] = new_tracker_data
@@ -190,25 +221,36 @@ def recognize_with_box():
                         surviving_trackers.append(tracker)
                         surviving_data.append(session_data["tracker_data"][i])
             except Exception:
-                pass
+                # A tracker that fails to update is dropped; MTCNN re-acquires the face
+                # on the next keyframe.
+                logger.debug("Dropping tracker after update failure", exc_info=True)
 
         session_data["trackers"] = surviving_trackers
         session_data["tracker_data"] = surviving_data
 
         return jsonify({"faces": results})
 
-    except Exception as e:
-        print("[RECOGNIZE ERROR]:", e)
+    except Exception:
+        logger.exception("[RECOGNIZE ERROR]")
         return jsonify({"faces": [], "error": "Server error during recognition."})
 
 
 # ---------------- MARK ATTENDANCE (SECURED) ----------------
 @attendance_bp.route("/mark_attendance", methods=["POST"])
 def mark_attendance():
+    """
+    Record one attendance event per student per IST day.
+
+    * ``method == "QR"``: public; requires a valid signed QR session token.
+    * ``method == "Face"``: requires an admin session or Bearer JWT (kiosk).
+
+    Liveness (blink) checks for the Face channel run in the kiosk browser; the server
+    only enforces that the caller is an authenticated kiosk/admin.
+    """
     try:
-        data = request.json or {}
-        roll = data.get("roll", "").strip()
-        method = data.get("method", "").strip()
+        data = get_json_body()
+        roll = get_str_field(data, "roll")
+        method = get_str_field(data, "method")
         qr_token = data.get("qr_token", "")
 
         if not roll or not method:
@@ -218,37 +260,26 @@ def mark_attendance():
         if method == "QR":
             if not qr_token:
                 return jsonify({"status": "error", "message": "Missing QR verification token."}), 400
-            serializer = get_qr_serializer()
-            try:
-                serializer.loads(qr_token, max_age=35)
-            except SignatureExpired:
-                return jsonify({"status": "error", "message": "QR code expired. Please rescan."}), 400
-            except BadSignature:
-                return jsonify({"status": "error", "message": "Invalid QR code signature."}), 400
+            is_valid, error = check_qr_token(qr_token, QR_TOKEN_SUBMIT_MAX_AGE)
+            if not is_valid:
+                return jsonify({"status": "error", "message": error}), 400
         elif method == "Face":
-            is_authorized = ("admin" in session)
-            if not is_authorized:
-                auth_header = request.headers.get("Authorization")
-                if auth_header and auth_header.startswith("Bearer "):
-                    try:
-                        decode_jwt_token(auth_header.split(" ")[1].strip())
-                        is_authorized = True
-                    except Exception:
-                        pass
-            if not is_authorized:
+            if not is_admin_request():
                 return jsonify({"status": "error", "message": "Unauthorized face attendance session."}), 401
         else:
             return jsonify({"status": "error", "message": "Invalid attendance method."}), 400
 
-        # Verify student existence
-        student = Student.query.filter_by(roll=roll).first()
+        # Verify student existence (case-insensitive: phones may submit lower-case rolls)
+        student = Student.find_by_roll(roll)
         if not student:
             return jsonify({"status": "error", "message": "Student not registered."}), 404
+        roll = student.roll
 
-        ist_now = get_ist_now()
-        today = ist_now.date()
+        now = ist_now()
+        today = now.date()
 
-        # Check duplicate for today
+        # Check duplicate for today. This is an application-level check (no DB unique
+        # constraint), so two simultaneous requests for the same roll could both pass.
         existing = Attendance.query.filter(
             Attendance.roll == roll,
             func.date(Attendance.timestamp) == today
@@ -260,15 +291,16 @@ def mark_attendance():
         record = Attendance(
             roll=roll,
             method=method,
-            timestamp=ist_now
+            timestamp=now
         )
         db.session.add(record)
         db.session.commit()
+        ATTENDANCE_MARKED_TOTAL.labels(method=method).inc()
 
         return jsonify({"status": "marked", "message": f"Attendance marked for {roll} via {method}."})
 
-    except Exception as e:
-        print("[MARK ATTENDANCE ERROR]:", e)
+    except Exception:
+        logger.exception("[MARK ATTENDANCE ERROR]")
         db.session.rollback()
         return jsonify({"status": "error", "message": "Server error while marking attendance."}), 500
 
@@ -277,12 +309,14 @@ def mark_attendance():
 @attendance_bp.route("/records", methods=["GET"])
 @admin_required
 def get_records():
+    """Return attendance grouped by IST date: ``{"YYYY-MM-DD": [{roll, method, time}]}``."""
     try:
         records = Attendance.query.order_by(Attendance.timestamp.desc()).all()
 
         grouped = {}
         latest_per_student_per_day = {}
 
+        # Keep one row per (roll, day) in case a race ever wrote a duplicate
         for r in records:
             date_str = r.timestamp.strftime("%Y-%m-%d")
             key = (r.roll, date_str)
@@ -303,9 +337,9 @@ def get_records():
 
         return jsonify(grouped)
 
-    except Exception as e:
-        print("[RECORDS ERROR]:", e)
-        return jsonify({})
+    except Exception:
+        logger.exception("[RECORDS ERROR]")
+        return jsonify({"error": "Failed to load attendance records."}), 500
 
 
 # ---------------- EXPORT ATTENDANCE REPORT (CSV) ----------------
@@ -316,17 +350,24 @@ def export_records():
     Generates and streams a CSV report of attendance records with student profile metadata.
     Supports optional query filters: date (YYYY-MM-DD), dept, roll.
     """
-    try:
-        date_filter = request.args.get("date", "").strip()
-        dept_filter = request.args.get("dept", "").strip().upper()
-        roll_filter = request.args.get("roll", "").strip().upper()
+    date_filter = request.args.get("date", "").strip()
+    dept_filter = request.args.get("dept", "").strip().upper()
+    roll_filter = request.args.get("roll", "").strip().upper()
 
+    filter_date = None
+    if date_filter:
+        try:
+            filter_date = datetime.strptime(date_filter, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid date filter. Use YYYY-MM-DD."}), 400
+
+    try:
         query = db.session.query(Attendance, Student).outerjoin(
             Student, Attendance.roll == Student.roll
         )
 
-        if date_filter:
-            query = query.filter(func.date(Attendance.timestamp) == date_filter)
+        if filter_date:
+            query = query.filter(func.date(Attendance.timestamp) == filter_date)
         if dept_filter:
             query = query.filter(Student.department == dept_filter)
         if roll_filter:
@@ -354,15 +395,15 @@ def export_records():
             ])
 
         output.seek(0)
-        filename = f"attendance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        filename = f"attendance_report_{ist_now().strftime('%Y%m%d_%H%M%S')}.csv"
         return Response(
             output.getvalue(),
             mimetype="text/csv",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
-    except Exception as e:
-        print("[EXPORT ERROR]:", e)
+    except Exception:
+        logger.exception("[EXPORT ERROR]")
         return jsonify({"error": "Failed to generate CSV export."}), 500
 
 
@@ -374,8 +415,8 @@ def clear_records():
         Attendance.query.delete()
         db.session.commit()
         return jsonify({"status": "cleared", "message": "All attendance records cleared."})
-    except Exception as e:
-        print("[CLEAR ERROR]:", e)
+    except Exception:
+        logger.exception("[CLEAR ERROR]")
         db.session.rollback()
         return jsonify({"error": "Failed to clear records."}), 500
 
@@ -386,17 +427,15 @@ def clear_records():
 def dashboard_data():
     try:
         total_students = Student.query.count()
-        ist_now = get_ist_now()
-        today = ist_now.date()
+        today = ist_now().date()
 
-        records = Attendance.query.all()
-        today_students_present = set()
-
-        for r in records:
-            if r.timestamp.date() == today:
-                today_students_present.add(r.roll)
-
-        today_present = len(today_students_present)
+        # Count distinct students present today in SQL instead of loading the whole
+        # attendance history into memory on every dashboard refresh.
+        today_present = db.session.query(
+            func.count(func.distinct(Attendance.roll))
+        ).filter(
+            func.date(Attendance.timestamp) == today
+        ).scalar() or 0
 
         return jsonify({
             "total_students": total_students,
@@ -404,10 +443,11 @@ def dashboard_data():
             "absent": max(0, total_students - today_present)
         })
 
-    except Exception as e:
-        print("[DASHBOARD ERROR]:", e)
+    except Exception:
+        logger.exception("[DASHBOARD ERROR]")
         return jsonify({
+            "error": "Failed to load dashboard statistics.",
             "total_students": 0,
             "present": 0,
             "absent": 0
-        })
+        }), 500

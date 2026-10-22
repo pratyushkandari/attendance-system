@@ -1,7 +1,7 @@
 import numpy as np
-import pytest
-from app.ai.face_utils import cosine_similarity
+
 from app.ai.comparator import compare_embeddings, vectorized_matrix_match
+from app.ai.face_utils import cosine_similarity
 
 
 def test_cosine_similarity_identical():

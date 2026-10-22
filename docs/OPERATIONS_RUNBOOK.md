@@ -13,7 +13,7 @@
 | **API Availability** | $\ge 99.9\%$ successful HTTP requests (non-5xx) | Rolling 30 Days | $< 99.5\%$ over 5 minutes |
 | **P95 Recognition Latency** | $< 45\text{ ms}$ per video frame | Rolling 1 Hour | $> 75\text{ ms}$ sustained for 3m |
 | **P99 QR Verification Latency** | $< 10\text{ ms}$ | Rolling 1 Hour | $> 25\text{ ms}$ sustained for 3m |
-| **Ledger Data Integrity** | Zero duplicate check-ins per student per day | Real-time | Any duplicate write event |
+| **Ledger Data Integrity** | Zero duplicate check-ins per student per day (application-level check) | Daily audit query | Any `(roll, date)` with more than one row |
 
 ---
 
@@ -43,8 +43,10 @@ groups:
           summary: "5xx server error rate exceeds 2%"
           description: "Database connection exhaustion or unhandled runtime exceptions detected."
 
+      # Requires a Redis exporter (e.g. oliver006/redis_exporter); the app itself
+      # does not export Redis metrics.
       - alert: RedisDistributedCacheDown
-        expr: rate(redis_connected_clients[1m]) == 0
+        expr: redis_up == 0
         for: 1m
         labels:
           severity: warning
@@ -62,7 +64,7 @@ groups:
 **Symptoms:** Bounding boxes lag on kiosk video feed; Prometheus `http_request_duration_seconds` spikes above 100ms.
 
 1. **Verify Active Camera Concurrency:**
-   Check gauge `active_camera_clients_total`. If a single pod is handling $> 4$ high-resolution streams simultaneously, trigger horizontal pod scale-out:
+   Check gauge `active_camera_clients_total` (reported per pod/worker). If a single pod is handling $> 4$ high-resolution streams simultaneously, trigger horizontal pod scale-out:
    ```bash
    kubectl scale deployment attendance-api-deployment --replicas=5
    ```
@@ -124,7 +126,7 @@ groups:
    ```bash
    kubectl rollout restart deployment attendance-redis
    ```
-   Once Redis is back online, the application seamlessly auto-reconnects on the subsequent read/write cycle.
+   Once Redis is back online, `SafeCacheStore` re-probes it within 30 seconds and switches back automatically (log line: `[CACHE] Redis connection restored.`). Lockout counters recorded in memory during the outage are not copied to Redis.
 
 ---
 

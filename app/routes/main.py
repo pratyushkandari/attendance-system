@@ -1,19 +1,47 @@
+import datetime
+import json
+import re
 import time
 import uuid
-import datetime
 from functools import wraps
+from typing import Any, Dict, Optional, Tuple
+
 import jwt
 from flask import (
-    Blueprint, render_template, request, jsonify,
-    session, redirect, make_response, current_app
+    Blueprint,
+    current_app,
+    jsonify,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    session,
 )
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from werkzeug.security import generate_password_hash, check_password_hash
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from werkzeug.security import check_password_hash, generate_password_hash
 
+from app.extensions import cache, db
 from app.models.admin import Admin
-from app.extensions import db
 
 main_bp = Blueprint("main", __name__)
+
+
+# ================= REQUEST PARSING HELPERS =================
+def get_json_body() -> Dict[str, Any]:
+    """
+    Return the JSON request body as a dict, or ``{}`` if it is missing or malformed.
+
+    ``request.json`` raises (HTTP 415/400 HTML pages) when the body is not valid JSON;
+    using ``silent=True`` lets each endpoint answer with its own JSON error instead.
+    """
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def get_str_field(data: Dict[str, Any], key: str) -> str:
+    """Return ``data[key]`` stripped if it is a string, otherwise ``""``."""
+    value = data.get(key)
+    return value.strip() if isinstance(value, str) else ""
 
 
 # ================= JWT TOKEN HELPERS =================
@@ -37,6 +65,26 @@ def decode_jwt_token(token):
     """
     secret = current_app.config.get("SECRET_KEY", "fallback-secret")
     return jwt.decode(token, secret, algorithms=["HS256"])
+
+
+def is_admin_request() -> bool:
+    """
+    Return True if the current request carries admin credentials.
+
+    Accepts either a valid ``Authorization: Bearer <jwt>`` header or an admin session
+    cookie. Unlike ``admin_required`` this never short-circuits the request, so it can
+    be used by endpoints that are public but behave differently for admins.
+    """
+    if "admin" in session:
+        return True
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            decode_jwt_token(auth_header.split(" ", 1)[1].strip())
+            return True
+        except jwt.InvalidTokenError:
+            return False
+    return False
 
 
 # ================= HYBRID AUTHENTICATION DECORATOR =================
@@ -65,7 +113,9 @@ def admin_required(f):
         if "admin" in session:
             return f(*args, **kwargs)
 
-        # 3. Unauthorized
+        # 3. Unauthorized: API callers get JSON 401, browsers are redirected to login.
+        # Note: HTML pages such as /register_page also match the "/register" prefix;
+        # they are redirected earlier by `block_unauthorized` below.
         if request.is_json or request.path.startswith(("/mark_", "/clear_", "/save_", "/register", "/records", "/dashboard_data", "/recognize", "/verify_student", "/capture_face", "/generate_qr_token")):
             return jsonify({"error": "Unauthorized. Bearer JWT token or Admin session required."}), 401
 
@@ -74,32 +124,78 @@ def admin_required(f):
 
 
 # ================= BRUTE FORCE PROTECTION =================
-# Stores: email -> {"count": int, "locked_at": float}
-login_attempts = {}
-LOCK_THRESHOLD = 3
-LOCK_DURATION_SECONDS = 900  # 15 minutes
+# Failed-login counters live in the shared SafeCacheStore (Redis when REDIS_URL is set,
+# otherwise an in-process dict), so the lockout holds across Gunicorn workers and pods.
+# Each record expires LOCKOUT_DURATION_SECONDS after the most recent failure.
+# The read-modify-write below is not atomic; under heavy parallel guessing a few extra
+# attempts may slip through before the lock engages, which is acceptable for this use.
+def _lockout_settings() -> Tuple[int, int]:
+    """Return (threshold, duration_seconds) from the app config."""
+    return (
+        int(current_app.config.get("LOCKOUT_THRESHOLD", 3)),
+        int(current_app.config.get("LOCKOUT_DURATION_SECONDS", 900)),
+    )
 
 
-def is_account_locked(email):
-    if email not in login_attempts:
-        return False, 0
-    
-    record = login_attempts[email]
-    if record["count"] >= LOCK_THRESHOLD:
+def _lockout_key(email: str) -> str:
+    return f"login_failures:{email}"
+
+
+def _get_failure_record(email: str) -> Dict[str, float]:
+    raw = cache.get(_lockout_key(email))
+    if raw:
+        try:
+            record = json.loads(raw)
+            return {"count": int(record["count"]), "locked_at": float(record["locked_at"])}
+        except (ValueError, KeyError, TypeError):
+            pass
+    return {"count": 0, "locked_at": 0.0}
+
+
+def reset_failed_logins(email: str) -> None:
+    """Clear the failed-login counter for ``email`` (called after a successful login)."""
+    cache.delete(_lockout_key(email))
+
+
+def record_failed_login(email: str) -> int:
+    """Increment and persist the failed-login counter; return the new count."""
+    threshold, duration = _lockout_settings()
+    record = _get_failure_record(email)
+    record["count"] += 1
+    if record["count"] >= threshold and not record["locked_at"]:
+        record["locked_at"] = time.time()
+    cache.set(_lockout_key(email), json.dumps(record), ex=duration)
+    return int(record["count"])
+
+
+def is_account_locked(email: str) -> Tuple[bool, int]:
+    """
+    Return ``(locked, remaining_minutes)`` for ``email``.
+
+    An expired lock is cleared so the user gets a fresh set of attempts.
+    """
+    threshold, duration = _lockout_settings()
+    record = _get_failure_record(email)
+    if record["count"] >= threshold:
         time_elapsed = time.time() - record["locked_at"]
-        if time_elapsed < LOCK_DURATION_SECONDS:
-            remaining_minutes = int((LOCK_DURATION_SECONDS - time_elapsed) // 60) + 1
+        if time_elapsed < duration:
+            remaining_minutes = int((duration - time_elapsed) // 60) + 1
             return True, remaining_minutes
-        else:
-            # Auto-unlock expired lockout
-            login_attempts[email] = {"count": 0, "locked_at": 0}
-            return False, 0
+        # Auto-unlock expired lockout
+        reset_failed_logins(email)
     return False, 0
 
 
 # ================= GLOBAL ROUTE PROTECTION =================
 @main_bp.before_app_request
 def block_unauthorized():
+    """
+    Redirect anonymous browsers away from admin HTML pages.
+
+    ``admin_required`` also guards these routes, but it answers JSON 401 for paths that
+    share a prefix with API endpoints (e.g. /register_page, /records_page). This hook
+    guarantees a redirect to the login page for every admin HTML page instead.
+    """
     protected_html_routes = [
         "/dashboard",
         "/register_page",
@@ -115,9 +211,38 @@ def block_unauthorized():
 
 
 # ================= DYNAMIC QR TOKEN HELPERS =================
+# Timing model for the rotating classroom QR code:
+#   * the kiosk fetches a new token every 5 s and the API advertises 15 s of validity;
+#   * /verify_qr_token accepts tokens up to 30 s old (15 s scan window + network leeway);
+#   * endpoints used after the student has typed their roll number (student lookup and
+#     /mark_attendance) accept up to 35 s so a slow confirmation still succeeds.
+QR_TOKEN_TTL_SECONDS = 15
+QR_TOKEN_VERIFY_MAX_AGE = 30
+QR_TOKEN_SUBMIT_MAX_AGE = 35
+
+
 def get_qr_serializer():
     secret = current_app.config.get("SECRET_KEY", "fallback-secret")
     return URLSafeTimedSerializer(secret, salt="qr-attendance-token")
+
+
+def check_qr_token(token: Optional[str], max_age: int) -> Tuple[bool, str]:
+    """
+    Validate a signed QR session token.
+
+    Returns:
+        ``(True, "")`` if the signature is valid and the token is younger than
+        ``max_age`` seconds, otherwise ``(False, <user-facing reason>)``.
+    """
+    if not token or not isinstance(token, str):
+        return False, "Missing QR token."
+    try:
+        get_qr_serializer().loads(token, max_age=max_age)
+        return True, ""
+    except SignatureExpired:
+        return False, "QR code expired. Please rescan."
+    except BadSignature:
+        return False, "Invalid QR code signature."
 
 
 @main_bp.route("/generate_qr_token", methods=["GET"])
@@ -125,7 +250,7 @@ def get_qr_serializer():
 def generate_qr_token():
     """
     Generates a cryptographically signed time-based token for dynamic QR session.
-    Token is valid for 15 seconds.
+    Token is advertised as valid for 15 seconds (see the timing model above).
     """
     serializer = get_qr_serializer()
     payload = {
@@ -136,7 +261,7 @@ def generate_qr_token():
     return jsonify({
         "status": "success",
         "token": token,
-        "expires_in": 15
+        "expires_in": QR_TOKEN_TTL_SECONDS
     })
 
 
@@ -145,29 +270,30 @@ def verify_qr_token():
     """
     Validates dynamic QR token submitted from mobile browser.
     """
-    data = request.json or {}
-    token = data.get("token")
+    token = get_json_body().get("token")
     if not token:
         return jsonify({"valid": False, "error": "Missing QR token"}), 400
 
-    serializer = get_qr_serializer()
-    try:
-        # Max age: 30 seconds (gives 15s scan window + network margin)
-        serializer.loads(token, max_age=30)
-        return jsonify({"valid": True})
-    except SignatureExpired:
-        return jsonify({"valid": False, "error": "QR token expired. Please rescan."}), 400
-    except BadSignature:
-        return jsonify({"valid": False, "error": "Invalid QR token."}), 400
+    is_valid, error = check_qr_token(token, QR_TOKEN_VERIFY_MAX_AGE)
+    if not is_valid:
+        return jsonify({"valid": False, "error": error}), 400
+    return jsonify({"valid": True})
 
 
 # ================= HTML PAGE ROUTES =================
+
+def admin_signup_open() -> bool:
+    """True if an anonymous visitor may create an admin account right now."""
+    if current_app.config.get("ALLOW_PUBLIC_ADMIN_SIGNUP"):
+        return True
+    return Admin.query.count() == 0
+
 
 @main_bp.route("/")
 def home():
     if "admin" in session:
         return redirect("/dashboard")
-    return render_template("admin_login.html")
+    return render_template("admin_login.html", allow_admin_signup=admin_signup_open())
 
 
 @main_bp.route("/dashboard")
@@ -225,14 +351,12 @@ def qr_result():
     return render_template("qr_result.html")
 
 
-import re
-
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
 
 def validate_email_format(email):
     """
-    Validates email format using RFC 5322 standards:
+    Validates email format with a pragmatic subset of RFC 5322 rules:
     - Must not be empty, max 254 characters
     - Must contain valid local-part and valid domain
     - TLD must be at least 2 alpha characters
@@ -277,14 +401,17 @@ def validate_email_format(email):
 
 def validate_password_strength(password, email=""):
     """
-    Enforces enterprise-grade NIST 800-63B password security policy:
-    1. Minimum 8 characters, maximum 128 characters
+    Enforces the platform password policy:
+    1. Minimum 8 characters, maximum 128 characters (NIST 800-63B length guidance)
     2. At least one lowercase letter (a-z)
     3. At least one uppercase letter (A-Z)
     4. At least one numeric digit (0-9)
     5. At least one special character (!@#$%^&*...)
     6. Disallows common dictionary/trivial passwords
     7. Disallows password containing the email prefix
+
+    Rules 2-5 are composition rules that go beyond NIST 800-63B (which does not
+    require them); they are kept as an institutional policy choice.
     """
     if not password:
         return False, "Password cannot be empty."
@@ -322,15 +449,30 @@ def validate_password_strength(password, email=""):
 
 @main_bp.route("/register_admin", methods=["POST"])
 def register_admin():
-    data = request.json or {}
-    email = data.get("email", "").strip().lower()
-    password = data.get("password", "")
+    """
+    Create an administrator account.
+
+    Anyone may create the *first* admin (bootstrap). Once an admin exists, the caller
+    must be an authenticated admin (session or Bearer JWT), unless the deployment sets
+    ``ALLOW_PUBLIC_ADMIN_SIGNUP=true`` (intended for public demos only).
+    """
+    if not admin_signup_open() and not is_admin_request():
+        return jsonify({
+            "status": "forbidden",
+            "message": "Administrator registration is closed. Ask an existing administrator to create your account."
+        }), 403
+
+    data = get_json_body()
+    email = get_str_field(data, "email").lower()
+    password = data.get("password") if isinstance(data.get("password"), str) else ""
 
     if not email or not password:
         return jsonify({"status": "error", "message": "Email and password are required."}), 400
 
-    # RFC 5322 Email validation
+    # Email format validation (also bounded by the 120-char `admins.email` column)
     is_valid_email, email_error_msg = validate_email_format(email)
+    if is_valid_email and len(email) > 120:
+        is_valid_email, email_error_msg = False, "Email address cannot exceed 120 characters."
     if not is_valid_email:
         return jsonify({"status": "invalid_email", "message": email_error_msg}), 400
 
@@ -354,30 +496,31 @@ def register_admin():
 
 @main_bp.route("/login_admin", methods=["POST"])
 def login_admin():
-    data = request.json or {}
-    email = data.get("email", "").strip().lower()
-    password = data.get("password", "")
+    data = get_json_body()
+    email = get_str_field(data, "email").lower()
+    password = data.get("password") if isinstance(data.get("password"), str) else ""
 
     if not email or not password:
         return jsonify({"status": "invalid", "message": "Missing email or password."}), 400
 
-    # RFC 5322 Email format validation
+    # Email format validation
     is_valid_email, email_err = validate_email_format(email)
     if not is_valid_email:
         return jsonify({"status": "invalid_email", "message": email_err}), 400
 
+    threshold, duration = _lockout_settings()
     locked, remaining_min = is_account_locked(email)
     if locked:
         return jsonify({
             "status": "locked",
-            "message": f"Account locked due to 3 failed attempts. Try again in {remaining_min} minutes."
+            "message": f"Account locked due to {threshold} failed attempts. Try again in {remaining_min} minutes."
         }), 403
 
     admin = Admin.query.filter_by(email=email).first()
 
     if admin and check_password_hash(admin.password, password):
         # Reset failed attempts
-        login_attempts[email] = {"count": 0, "locked_at": 0}
+        reset_failed_logins(email)
         session["admin"] = admin.email
 
         # Generate Stateless JWT Token
@@ -390,26 +533,23 @@ def login_admin():
             "expires_in": 86400,
             "user": admin.email
         })
-    else:
-        # Increment attempt counter
-        if email not in login_attempts:
-            login_attempts[email] = {"count": 0, "locked_at": 0}
 
-        login_attempts[email]["count"] += 1
+    # Increment attempt counter (also for unknown emails, so responses do not reveal
+    # which addresses belong to real administrators)
+    failed_count = record_failed_login(email)
 
-        if login_attempts[email]["count"] >= LOCK_THRESHOLD:
-            login_attempts[email]["locked_at"] = time.time()
-            return jsonify({
-                "status": "locked",
-                "message": "Account locked after 3 failed attempts. Locked for 15 minutes."
-            }), 403
-
-        attempts_left = LOCK_THRESHOLD - login_attempts[email]["count"]
+    if failed_count >= threshold:
         return jsonify({
-            "status": "invalid",
-            "attempts_left": attempts_left,
-            "message": f"Invalid credentials. {attempts_left} attempts left."
-        }), 401
+            "status": "locked",
+            "message": f"Account locked after {threshold} failed attempts. Locked for {max(1, duration // 60)} minutes."
+        }), 403
+
+    attempts_left = threshold - failed_count
+    return jsonify({
+        "status": "invalid",
+        "attempts_left": attempts_left,
+        "message": f"Invalid credentials. {attempts_left} attempts left."
+    }), 401
 
 
 @main_bp.route("/logout")
@@ -424,4 +564,4 @@ def logout():
 def admin_login():
     if "admin" in session:
         return redirect("/dashboard")
-    return render_template("admin_login.html")
+    return render_template("admin_login.html", allow_admin_signup=admin_signup_open())

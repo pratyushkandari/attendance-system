@@ -30,28 +30,28 @@
             Provide the student's institutional details to generate their unique identification number and proceed to facial embedding capture.
         </p>
 
-        <form id="enrollForm" onsubmit="event.preventDefault();" autocomplete="off">
+        <form id="enrollForm" autocomplete="off" novalidate>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:1rem;">
                 <div class="form-group">
                     <label class="form-label" for="first">First Name <span style="color:var(--rose-500);">*</span></label>
-                    <input id="first" class="input-field" placeholder="e.g. John" required autocomplete="off">
+                    <input id="first" class="input-field" placeholder="e.g. John" required maxlength="100" autocomplete="off">
                 </div>
 
                 <div class="form-group">
                     <label class="form-label" for="last">Last Name <span style="color:var(--rose-500);">*</span></label>
-                    <input id="last" class="input-field" placeholder="e.g. Doe" required autocomplete="off">
+                    <input id="last" class="input-field" placeholder="e.g. Doe" required maxlength="100" autocomplete="off">
                 </div>
             </div>
 
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:1rem;">
                 <div class="form-group">
                     <label class="form-label" for="department">Academic Department <span style="color:var(--rose-500);">*</span></label>
-                    <input id="department" class="input-field" placeholder="e.g. CSE, ECE, ME" required autocomplete="off">
+                    <input id="department" class="input-field" placeholder="e.g. CSE, ECE, ME" required maxlength="10" autocapitalize="characters" autocomplete="off">
                 </div>
 
                 <div class="form-group">
                     <label class="form-label" for="year">Graduation Cohort Year <span style="color:var(--rose-500);">*</span></label>
-                    <input id="year" class="input-field" placeholder="e.g. 2026" required autocomplete="off">
+                    <input id="year" class="input-field" placeholder="e.g. 2026" required inputmode="numeric" maxlength="4" autocomplete="off">
                 </div>
             </div>
 
@@ -62,15 +62,15 @@
                         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                         <polyline points="22,6 12,13 2,6"></polyline>
                     </svg>
-                    <input id="email" type="email" class="input-field input-with-icon" placeholder="student@institution.edu" required autocomplete="off">
+                    <input id="email" type="email" class="input-field input-with-icon" placeholder="student@institution.edu" required maxlength="120" autocomplete="off">
                 </div>
             </div>
 
             <!-- Dynamic Feedback Area -->
-            <div id="msg" style="margin-top: 1rem;"></div>
+            <div id="msg" style="margin-top: 1rem;" aria-live="polite"></div>
 
             <div style="margin-top: 1.5rem;">
-                <button type="button" id="registerBtn" class="btn btn-primary btn-block" style="padding: 0.8rem;">
+                <button type="submit" id="registerBtn" class="btn btn-primary btn-block" style="padding: 0.8rem;">
                     Save Record &amp; Proceed to Face Capture &rarr;
                 </button>
             </div>
@@ -78,6 +78,6 @@
     </div>
 </div>
 
-<script src="/static/js/register.js"></script>
+<script src="/static/js/register.js?v=2.4.3"></script>
 
 {% endblock %}

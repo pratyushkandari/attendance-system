@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=2.4.2">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.4.3">
 </head>
 <body>
 
@@ -31,8 +31,8 @@
     </a>
 
     {% if session.get("admin") %}
-    <nav class="nav-menu">
-        <a href="/dashboard" class="nav-link {% if request.path == '/dashboard' %}active{% endif %}">
+    <nav class="nav-menu" aria-label="Main navigation">
+        <a href="/dashboard" class="nav-link {% if request.path == '/dashboard' %}active{% endif %}"{% if request.path == '/dashboard' %} aria-current="page"{% endif %}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="3" width="7" height="7"></rect>
                 <rect x="14" y="3" width="7" height="7"></rect>
@@ -41,7 +41,7 @@
             </svg>
             Dashboard
         </a>
-        <a href="/register_page" class="nav-link {% if request.path == '/register_page' or request.path == '/capture' %}active{% endif %}">
+        <a href="/register_page" class="nav-link {% if request.path == '/register_page' or request.path == '/capture' %}active{% endif %}"{% if request.path in ('/register_page', '/capture') %} aria-current="page"{% endif %}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
                 <circle cx="9" cy="7" r="4"></circle>
@@ -50,14 +50,14 @@
             </svg>
             Student Enrollment
         </a>
-        <a href="/recognize_page" class="nav-link {% if request.path == '/recognize_page' %}active{% endif %}">
+        <a href="/recognize_page" class="nav-link {% if request.path == '/recognize_page' %}active{% endif %}"{% if request.path == '/recognize_page' %} aria-current="page"{% endif %}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
             </svg>
             Biometric Kiosk
         </a>
-        <a href="/qr_session" class="nav-link {% if request.path == '/qr_session' %}active{% endif %}">
+        <a href="/qr_session" class="nav-link {% if request.path == '/qr_session' %}active{% endif %}"{% if request.path == '/qr_session' %} aria-current="page"{% endif %}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="3" width="7" height="7"></rect>
                 <rect x="14" y="3" width="7" height="7"></rect>
@@ -68,7 +68,7 @@
             </svg>
             Dynamic QR
         </a>
-        <a href="/records_page" class="nav-link {% if request.path == '/records_page' %}active{% endif %}">
+        <a href="/records_page" class="nav-link {% if request.path == '/records_page' %}active{% endif %}"{% if request.path == '/records_page' %} aria-current="page"{% endif %}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -78,7 +78,7 @@
             </svg>
             Audit Logs
         </a>
-        <div style="height: 20px; width: 1px; background: rgba(255,255,255,0.15); margin: 0 4px;"></div>
+        <div aria-hidden="true" style="height: 20px; width: 1px; flex-shrink: 0; background: rgba(255,255,255,0.15); margin: 0 4px;"></div>
         <a href="/logout" class="nav-link nav-link-logout">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -105,7 +105,7 @@
         <strong>VisionAttend Platform</strong> &bull; Edge AI Facial Recognition &amp; Cryptographic QR Pipeline
     </div>
     <div style="font-family: var(--font-mono); font-size: 0.7rem;">
-        FaceNet 512-D &bull; CSRT Tracker &bull; NIST 800-63B Auth
+        FaceNet 512-D &bull; CSRT Tracker &bull; scrypt-Hashed Credentials
     </div>
 </footer>
 

@@ -63,7 +63,7 @@
         <div class="hud-telemetry-bar">
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 <span class="pulse-dot"></span>
-                <span id="status" style="color:var(--slate-300);">Camera ready. Align face within viewport reticle.</span>
+                <span id="status" style="color:var(--slate-300);" aria-live="polite">Camera ready. Align face within viewport reticle.</span>
             </div>
             <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--slate-400);">
                 Resolution: 640x480 &bull; PyTorch InceptionResnet
@@ -82,6 +82,6 @@
     </div>
 </div>
 
-<script src="/static/js/capture.js"></script>
+<script src="/static/js/capture.js?v=2.4.3"></script>
 
 {% endblock %}

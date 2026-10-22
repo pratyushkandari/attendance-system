@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.3] - 2026-10-23
+
+### Security
+- `/register_admin` again accepts anonymous signup only while no administrator exists; later admins must be created by an authenticated admin. `ALLOW_PUBLIC_ADMIN_SIGNUP=true` reopens public signup for demo deployments, and the login page hides the signup link when it is closed.
+- Kiosk liveness no longer auto-passes after 3 recognised frames (a printed photo could be marked present). Blink state is now tracked per recognised face.
+- `/verify_student` and `/get_student` now require the live QR token (or admin credentials), closing unauthenticated enumeration of student names by sequential roll number.
+- Student `year`/`department` are validated (4-digit year, 2–10 letter department code), and server values are rendered as text in the admin UI, preventing markup injection through roll numbers or error messages.
+- Session cookie explicitly `HttpOnly` + `SameSite=Lax`; startup warning when the default development `SECRET_KEY` is in use; `.env` excluded from Docker build context.
+
+### Fixed
+- Test suite built the app with the production config, so it tried to connect to PostgreSQL (all API tests errored in CI) and its teardown could `drop_all()` a developer's real database. Tests now use an isolated SQLite config.
+- Login lockout ignored `LOCKOUT_THRESHOLD`/`LOCKOUT_DURATION_SECONDS` and lived in a per-process dict; it now uses the configured values and `SafeCacheStore` (shared via Redis when configured). The Kubernetes ConfigMap used the wrong variable names.
+- `SafeCacheStore` never reconnected after a Redis failure; it now re-probes every 30 seconds.
+- `FACE_MATCH_THRESHOLD` and `MTCNN_CONFIDENCE_THRESHOLD` were not used; recognition and enrollment now read them. Recognition reuses `vectorized_matrix_match` instead of a duplicated inline copy and skips malformed stored vectors.
+- `/save_face_data` validates embedding shape (malformed vectors previously broke matching for every student).
+- QR check-in accepts lower-case roll numbers; `/dashboard_data` counts today's attendance in SQL; `/records` and `/dashboard_data` return HTTP 500 on failure instead of empty "success" data; `/export_records` rejects malformed dates; Prometheus `attendance_marked_total` and `active_camera_clients_total` are now updated.
+- Thread-safety: lock around the kiosk tracker registry and lazy model initialisation.
+- Docker Compose app container now receives `REDIS_URL`.
+
+### Frontend
+- Admin navigation (including Sign Out) was hidden below 768 px; it now wraps and scrolls horizontally. The kiosk layout stacks on narrow screens.
+- "Purge records" no longer reports success when the request fails; records/dashboard show error states; enrollment form submits with Enter; capture is blocked when no camera is available; expired sessions redirect to login.
+- QR result page distinguishes "already recorded today"; mobile pages allow pinch-zoom; visible keyboard focus styles; undefined CSS variables defined.
+
+### Removed
+- Unused `get_embedding` wrapper, unused `liveness_detection_total` metric, unused `EAR_BLINK_THRESHOLD` setting, unused imports, and the duplicate Google Fonts `@import`.
+
+### Documentation
+- Corrected claims that did not match the code (pgvector usage, Redis locks, database unique constraint, QR TTL, "EAR" liveness, ISO/NIST compliance wording) and documented known limitations in `docs/SECURITY.md`.
+
+---
+
 ## [2.4.2] - 2026-10-15
 
 ### Added

@@ -1,5 +1,4 @@
-import pytest
-from app.routes.main import login_attempts, LOCK_THRESHOLD, generate_jwt_token
+from app.routes.main import generate_jwt_token, reset_failed_logins
 
 
 def test_login_success_returns_jwt(client):
@@ -21,7 +20,7 @@ def test_login_invalid_password(client):
 
 def test_account_lockout_after_three_attempts(client):
     email = "target@test.com"
-    login_attempts.pop(email, None)
+    reset_failed_logins(email)
 
     # 3 consecutive failed attempts
     for _ in range(3):
@@ -118,8 +117,9 @@ def test_register_admin_invalid_email_format_rejected(authenticated_client):
 
 
 def test_password_is_never_stored_in_plaintext_and_is_cryptographically_hashed(app):
-    from app.models.admin import Admin
     from werkzeug.security import check_password_hash
+
+    from app.models.admin import Admin
 
     with app.app_context():
         admin = Admin.query.filter_by(email="admin@test.com").first()
@@ -133,5 +133,82 @@ def test_password_is_never_stored_in_plaintext_and_is_cryptographically_hashed(a
         assert check_password_hash(admin.password, "wrongpassword") is False
 
 
+def test_register_admin_closed_to_anonymous_users_after_bootstrap(client):
+    # An admin already exists (seeded by the fixture), so anonymous signup is refused
+    res = client.post("/register_admin", json={"email": "intruder@test.com", "password": "AdminSecure@2026!"})
+    assert res.status_code == 403
+    assert res.get_json()["status"] == "forbidden"
 
 
+def test_register_admin_bootstrap_allows_first_admin(client):
+    from app.extensions import db
+    from app.models.admin import Admin
+
+    # The fixture's app context is still active here, so this uses the same session
+    # as the request handlers below.
+    Admin.query.delete()
+    db.session.commit()
+    db.session.expunge_all()
+
+    res = client.post("/register_admin", json={"email": "first@test.com", "password": "AdminSecure@2026!"})
+    assert res.status_code == 200
+    assert res.get_json()["status"] == "registered"
+
+    # Once the first admin exists, the door closes again
+    res = client.post("/register_admin", json={"email": "second@test.com", "password": "AdminSecure@2026!"})
+    assert res.status_code == 403
+
+
+def test_register_admin_public_signup_flag(app, client):
+    app.config["ALLOW_PUBLIC_ADMIN_SIGNUP"] = True
+    res = client.post("/register_admin", json={"email": "demo@test.com", "password": "AdminSecure@2026!"})
+    assert res.status_code == 200
+
+
+def test_login_page_hides_signup_link_when_registration_closed(client, app):
+    res = client.get("/")
+    assert b'id="toggleText"' not in res.data
+
+    app.config["ALLOW_PUBLIC_ADMIN_SIGNUP"] = True
+    res = client.get("/")
+    assert b'id="toggleText"' in res.data
+
+
+def test_lockout_respects_configured_threshold(client, app):
+    app.config["LOCKOUT_THRESHOLD"] = 5
+    for _ in range(3):
+        res = client.post("/login_admin", json={"email": "admin@test.com", "password": "wrong"})
+    assert res.status_code == 401
+    assert res.get_json()["attempts_left"] == 2
+
+
+def test_locked_account_rejects_correct_password_until_expiry(client):
+    for _ in range(3):
+        client.post("/login_admin", json={"email": "admin@test.com", "password": "wrong"})
+
+    res = client.post("/login_admin", json={"email": "admin@test.com", "password": "password123"})
+    assert res.status_code == 403
+    assert res.get_json()["status"] == "locked"
+
+
+def test_successful_login_resets_failed_attempts(client):
+    client.post("/login_admin", json={"email": "admin@test.com", "password": "wrong"})
+    client.post("/login_admin", json={"email": "admin@test.com", "password": "wrong"})
+    res = client.post("/login_admin", json={"email": "admin@test.com", "password": "password123"})
+    assert res.status_code == 200
+
+    res = client.post("/login_admin", json={"email": "admin@test.com", "password": "wrong"})
+    assert res.get_json()["attempts_left"] == 2
+
+
+def test_login_with_non_json_body_returns_json_error(client):
+    res = client.post("/login_admin", data="email=a&password=b", content_type="application/x-www-form-urlencoded")
+    assert res.status_code == 400
+    assert res.get_json()["status"] == "invalid"
+
+
+def test_session_cookie_is_httponly_and_samesite_lax(client):
+    res = client.post("/login_admin", json={"email": "admin@test.com", "password": "password123"})
+    cookie = res.headers.get("Set-Cookie", "")
+    assert "HttpOnly" in cookie
+    assert "SameSite=Lax" in cookie

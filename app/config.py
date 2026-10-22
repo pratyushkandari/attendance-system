@@ -2,13 +2,13 @@
 Configuration Module for VisionAttend Application Gateway.
 
 Loads environment variables from `.env` files via python-dotenv and
-configures SQLAlchemy database pooling, cryptographic secrets, rate limiting,
-and biometric thresholds.
+configures SQLAlchemy database pooling, cryptographic secrets, session cookie
+hardening, login lockout limits, and biometric thresholds.
 """
 
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 # Load environment configuration from .env file if available
 try:
@@ -20,12 +20,31 @@ except ImportError:
     pass
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Parse a boolean environment variable ("1", "true", "yes", "on" are truthy)."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Development-only fallback. `create_app` logs a warning when this value is in use
+# outside of tests, because anyone who knows it can forge sessions, JWTs and QR tokens.
+DEFAULT_SECRET_KEY = "dev-attendance-secret-key-change-in-production-2026"  # nosec B105
+
+
 class Config:
     """
     Centralized application configuration object for Flask application factory.
     """
-    # Core Cryptographic Master Secret
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-attendance-secret-key-change-in-production-2026")
+    # Core Cryptographic Master Secret (signs session cookies, JWTs and QR tokens)
+    SECRET_KEY: str = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
+
+    # Session cookie hardening. HttpOnly keeps the cookie away from page scripts and
+    # SameSite=Lax stops browsers from attaching it to cross-site POSTs (CSRF), which
+    # matters because state-changing endpoints such as /clear_records rely on it.
+    SESSION_COOKIE_HTTPONLY: bool = True
+    SESSION_COOKIE_SAMESITE: str = "Lax"
 
     # PostgreSQL / Cloud Database Connection URL
     db_url: str = os.getenv(
@@ -50,8 +69,14 @@ class Config:
     else:
         SQLALCHEMY_ENGINE_OPTIONS: Dict[str, Any] = {}
 
-    # Distributed Redis Cache URL
+    # Distributed Redis Cache URL. Informational only: `SafeCacheStore` reads the
+    # REDIS_URL environment variable directly and uses Redis only when it is set.
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+    # Admin self-registration. By default only the very first administrator can sign up
+    # without being logged in (bootstrap); afterwards an existing admin must create new
+    # admins. Set to true only for public demo deployments.
+    ALLOW_PUBLIC_ADMIN_SIGNUP: bool = _env_flag("ALLOW_PUBLIC_ADMIN_SIGNUP", False)
 
     # Rate Limiting & Brute-Force Lockout
     LOCKOUT_THRESHOLD: int = int(os.getenv("LOCKOUT_THRESHOLD", "3"))
@@ -60,4 +85,3 @@ class Config:
     # Biometric Inference Thresholds
     FACE_MATCH_THRESHOLD: float = float(os.getenv("FACE_MATCH_THRESHOLD", "0.70"))
     MTCNN_CONFIDENCE_THRESHOLD: float = float(os.getenv("MTCNN_CONFIDENCE_THRESHOLD", "0.90"))
-    EAR_BLINK_THRESHOLD: float = float(os.getenv("EAR_BLINK_THRESHOLD", "0.22"))

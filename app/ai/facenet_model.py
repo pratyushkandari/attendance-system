@@ -1,5 +1,7 @@
 import logging
+import threading
 from typing import Any, Optional
+
 import cv2
 import numpy as np
 import torch
@@ -16,6 +18,11 @@ device: str = "cuda" if torch.cuda.is_available() else "cpu"
 _mtcnn_instance: Optional[MTCNN] = None
 _resnet_instance: Optional[InceptionResnetV1] = None
 
+# Gunicorn runs several threads per worker. Without a lock, the first concurrent
+# requests could each build their own model copy, doubling peak memory on small
+# (512 MB) instances.
+_model_init_lock = threading.Lock()
+
 
 def get_mtcnn() -> MTCNN:
     """
@@ -25,12 +32,14 @@ def get_mtcnn() -> MTCNN:
     """
     global _mtcnn_instance
     if _mtcnn_instance is None:
-        _mtcnn_instance = MTCNN(
-            keep_all=True,
-            min_face_size=20,
-            thresholds=[0.6, 0.7, 0.7],
-            device=device,
-        )
+        with _model_init_lock:
+            if _mtcnn_instance is None:
+                _mtcnn_instance = MTCNN(
+                    keep_all=True,
+                    min_face_size=20,
+                    thresholds=[0.6, 0.7, 0.7],
+                    device=device,
+                )
     return _mtcnn_instance
 
 
@@ -42,7 +51,9 @@ def get_resnet() -> InceptionResnetV1:
     """
     global _resnet_instance
     if _resnet_instance is None:
-        _resnet_instance = InceptionResnetV1(pretrained="vggface2").eval().to(device)
+        with _model_init_lock:
+            if _resnet_instance is None:
+                _resnet_instance = InceptionResnetV1(pretrained="vggface2").eval().to(device)
     return _resnet_instance
 
 
@@ -66,7 +77,7 @@ def get_embedding_from_crop(face_bgr_crop: Optional[np.ndarray]) -> Optional[np.
 
     Pipelines:
         1. BGR -> RGB color space conversion.
-        2. Bilinear downsampling to model input dimensions (160x160).
+        2. Area-interpolated (cv2.INTER_AREA) resize to model input dimensions (160x160).
         3. Normalization to standard floating-point range [-1.0, 1.0].
         4. InceptionResnetV1 forward-pass under `torch.no_grad()`.
         5. L2-normalization to enforce unit hypersphere geometry.
@@ -105,16 +116,3 @@ def get_embedding_from_crop(face_bgr_crop: Optional[np.ndarray]) -> Optional[np.
     except Exception as e:
         logger.error(f"[AI Model Error] get_embedding_from_crop failed: {e}", exc_info=True)
         return None
-
-
-def get_embedding(img_bgr: Optional[np.ndarray]) -> Optional[np.ndarray]:
-    """
-    Legacy wrapper that extracts an embedding from a cropped face image.
-
-    Args:
-        img_bgr: Cropped facial sub-image as a 3-channel BGR NumPy array.
-
-    Returns:
-        1D float32 NumPy array of shape (512,) or None.
-    """
-    return get_embedding_from_crop(img_bgr)

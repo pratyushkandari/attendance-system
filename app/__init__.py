@@ -1,7 +1,12 @@
-from typing import Optional, Type
+import logging
+from typing import Type
+
 from flask import Flask
-from .config import Config
+
+from .config import DEFAULT_SECRET_KEY, Config
 from .extensions import db
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(config_class: Type[Config] = Config) -> Flask:
@@ -10,6 +15,9 @@ def create_app(config_class: Type[Config] = Config) -> Flask:
 
     Initializes Flask application instance, loads configuration, sets up SQLAlchemy
     database connection, registers modular blueprints, and mounts Prometheus telemetry.
+
+    Note: ``db.create_all()`` runs here, so the configured database must be reachable
+    when the app is created (tests pass a SQLite in-memory config class).
 
     Args:
         config_class: Configuration class defining runtime environment parameters.
@@ -20,10 +28,16 @@ def create_app(config_class: Type[Config] = Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    if app.config.get("SECRET_KEY") == DEFAULT_SECRET_KEY and not app.config.get("TESTING"):
+        logger.warning(
+            "SECRET_KEY is using the built-in development default. Set the SECRET_KEY "
+            "environment variable; otherwise sessions, JWTs and QR tokens can be forged."
+        )
+
     db.init_app(app)
 
-    # Import models after db init
-    from .models import Admin, Attendance, Student
+    # Import models after db init so their tables are registered before create_all()
+    from .models import Admin, Attendance, Student  # noqa: F401
 
     # Import routes
     from .routes.attendance import attendance_bp
@@ -43,4 +57,3 @@ def create_app(config_class: Type[Config] = Config) -> Flask:
         db.create_all()
 
     return app
-

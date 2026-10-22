@@ -1,4 +1,4 @@
-# ================= MULTI-STAGE PYTHON DOCKERFILE =================
+# ================= PYTHON (CPU) DOCKERFILE =================
 FROM python:3.10-slim AS base
 
 # Set environment variables for minimal RAM consumption

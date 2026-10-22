@@ -9,6 +9,14 @@ const startBtn = document.getElementById("startBtn");
 let roll = localStorage.getItem("roll");
 let collectedEmbeddings = [];
 let isCapturing = false;
+let cameraReady = false;
+
+/** Show a coloured status line; text is inserted as text, never as HTML. */
+function setStatus(text, color) {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.style.color = color || "var(--slate-300)";
+}
 
 const REQUIRED_SAMPLES = 5;
 const INSTRUCTIONS = [
@@ -21,14 +29,14 @@ const INSTRUCTIONS = [
 
 // 1. Check if roll number exists
 if (!roll) {
-    if (statusEl) statusEl.innerHTML = "<span style='color:#f87171;'>No active enrollment roll found. Redirecting to student form...</span>";
+    setStatus("No active enrollment roll found. Redirecting to student form...", "#f87171");
     if (startBtn) startBtn.disabled = true;
     setTimeout(() => {
         window.location.href = "/register_page";
     }, 1800);
 } else {
     if (rollDisplay) rollDisplay.innerText = "Roll ID: " + roll;
-    if (statusEl) statusEl.innerText = "Camera initialized. Click 'Begin 5-Angle Face Capture' when ready.";
+    setStatus("Camera initialized. Click 'Begin 5-Angle Face Capture' when ready.");
 }
 
 // 2. Start webcam
@@ -40,17 +48,24 @@ navigator.mediaDevices.getUserMedia({
     video.onloadedmetadata = () => {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
+        cameraReady = true;
     };
 })
 .catch(err => {
     console.error("[WEBCAM ERROR]:", err);
-    if (statusEl) statusEl.innerHTML = "<span style='color:#f87171;'>Camera hardware blocked or unavailable. Please check system permissions.</span>";
+    setStatus("Camera hardware blocked or unavailable. Please check system permissions.", "#f87171");
+    // Without a camera every "sample" would be a blank frame, so block the capture flow
+    if (startBtn) startBtn.disabled = true;
 });
 
 // 3. Start Capture Flow
 if (startBtn) {
     startBtn.addEventListener("click", async () => {
-        if (isCapturing) return;
+        if (isCapturing || !roll) return;
+        if (!cameraReady) {
+            setStatus("Camera is still starting. Please wait a moment and try again.", "#fde68a");
+            return;
+        }
         isCapturing = true;
         startBtn.disabled = true;
         startBtn.innerText = "Capturing Face Embeddings...";
@@ -107,7 +122,7 @@ async function runEnrollmentLoop() {
     let failedAttempts = 0;
 
     while (sampleIndex < REQUIRED_SAMPLES && failedAttempts < 15) {
-        statusEl.innerText = INSTRUCTIONS[sampleIndex] || "Capturing vector sample...";
+        setStatus(INSTRUCTIONS[sampleIndex] || "Capturing vector sample...");
 
         // Small delay between shots
         await new Promise(r => setTimeout(r, 650));
@@ -121,6 +136,11 @@ async function runEnrollmentLoop() {
                 body: JSON.stringify({ image: imageBase64 })
             });
 
+            if (res.status === 401) {
+                window.location.href = "/";
+                return;
+            }
+
             const data = await res.json();
 
             if (data.status === "success" && data.embedding) {
@@ -132,7 +152,7 @@ async function runEnrollmentLoop() {
             } else {
                 failedAttempts++;
                 updateSampleStepBadge(sampleIndex, false);
-                statusEl.innerText = `Re-aligning: ${data.error || "No face detected in reticle"}...`;
+                setStatus(`Re-aligning: ${data.error || "No face detected in reticle"}...`, "#fde68a");
             }
 
         } catch (err) {
@@ -144,7 +164,7 @@ async function runEnrollmentLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (collectedEmbeddings.length < REQUIRED_SAMPLES) {
-        statusEl.innerHTML = "<span style='color:#f87171;'>Failed to collect sufficient facial angles. Please retry enrollment.</span>";
+        setStatus("Failed to collect sufficient facial angles. Please retry enrollment.", "#f87171");
         startBtn.disabled = false;
         startBtn.innerText = "Retry 5-Angle Face Capture";
         isCapturing = false;
@@ -152,7 +172,7 @@ async function runEnrollmentLoop() {
     }
 
     // Submit embeddings to backend
-    statusEl.innerHTML = "<span style='color:#60a5fa;'>Synthesizing 512-D centroid vector profile...</span>";
+    setStatus("Synthesizing 512-D centroid vector profile...", "#60a5fa");
 
     try {
         const saveRes = await fetch("/save_face_data", {
@@ -164,16 +184,21 @@ async function runEnrollmentLoop() {
             })
         });
 
+        if (saveRes.status === 401) {
+            window.location.href = "/";
+            return;
+        }
+
         const saveData = await saveRes.json();
 
         if (saveData.status === "saved") {
-            statusEl.innerHTML = `<span style='color:#34d399;'><b>Enrollment Complete!</b> Biometric profile synthesized for <b>${roll}</b>. Redirecting...</span>`;
+            setStatus(`Enrollment Complete! Biometric profile synthesized for ${roll}. Redirecting...`, "#34d399");
             localStorage.removeItem("roll");
             setTimeout(() => {
                 window.location.href = "/dashboard";
             }, 1800);
         } else {
-            statusEl.innerHTML = `<span style='color:#f87171;'>Profile storage error: ${saveData.error || "Unknown"}</span>`;
+            setStatus(`Profile storage error: ${saveData.error || "Unknown"}`, "#f87171");
             startBtn.disabled = false;
             startBtn.innerText = "Retry Save";
             isCapturing = false;
@@ -181,7 +206,7 @@ async function runEnrollmentLoop() {
 
     } catch (err) {
         console.error("[SAVE ERROR]:", err);
-        statusEl.innerHTML = "<span style='color:#f87171;'>Network error persisting biometric vectors.</span>";
+        setStatus("Network error persisting biometric vectors.", "#f87171");
         startBtn.disabled = false;
         startBtn.innerText = "Retry Save";
         isCapturing = false;

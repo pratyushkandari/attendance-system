@@ -8,7 +8,7 @@ help:
 	@echo "Available commands:"
 	@echo "  make install       Install project dependencies into virtual environment"
 	@echo "  make run           Run application locally with Gunicorn (or Flask dev)"
-	@echo "  make test          Run 28-test automated pytest suite"
+	@echo "  make test          Run the automated pytest suite"
 	@echo "  make coverage      Run pytest with terminal code coverage report"
 	@echo "  make lint          Run ruff and bandit security analysis"
 	@echo "  make clean         Remove build, cache, and bytecode artifacts"

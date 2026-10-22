@@ -50,7 +50,7 @@
 
             <!-- Password Requirements for Registration Mode -->
             <div id="pwdRequirements" class="pwd-meter-box">
-                <div class="pwd-meter-title">NIST 800-63B Compliance Checklist:</div>
+                <div class="pwd-meter-title">Password Requirements:</div>
                 <ul class="pwd-req-list">
                     <li id="reqLen" class="pwd-req-item">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"></circle></svg>
@@ -87,12 +87,16 @@
             </button>
         </form>
 
+        {# Only offered while anonymous signup is allowed (first admin / demo mode); the
+           server enforces the same rule on /register_admin. #}
+        {% if allow_admin_signup %}
         <div style="text-align:center; margin-top: 1.5rem;">
             <p id="toggleText" style="font-size:0.825rem; color:var(--slate-500);">
                 Initial system deployment?
-                <a href="javascript:void(0)" onclick="toggle()" style="color:var(--primary-600); font-weight:700; text-decoration:none;">Initialize Admin Profile</a>
+                <button type="button" class="link-button" onclick="toggle()">Initialize Admin Profile</button>
             </p>
         </div>
+        {% endif %}
 
         <div class="auth-badge-footer">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
@@ -155,10 +159,16 @@ function toggle() {
     document.getElementById("pwdRequirements").style.display =
         isLogin ? "none" : "block";
 
-    document.getElementById("toggleText").innerHTML =
-        isLogin
-        ? `Initial system deployment? <a href="javascript:void(0)" onclick="toggle()" style="color:var(--primary-600); font-weight:700; text-decoration:none;">Initialize Admin Profile</a>`
-        : `Existing administrator? <a href="javascript:void(0)" onclick="toggle()" style="color:var(--primary-600); font-weight:700; text-decoration:none;">Return to Sign In</a>`;
+    const toggleText = document.getElementById("toggleText");
+    if (toggleText) {
+        toggleText.innerHTML =
+            isLogin
+            ? `Initial system deployment? <button type="button" class="link-button" onclick="toggle()">Initialize Admin Profile</button>`
+            : `Existing administrator? <button type="button" class="link-button" onclick="toggle()">Return to Sign In</button>`;
+    }
+
+    // Browsers should offer to save a new password, not autofill the current one
+    document.getElementById("password").autocomplete = isLogin ? "current-password" : "new-password";
 
     hideMessages();
 

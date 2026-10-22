@@ -11,22 +11,27 @@ const liveFeedContainer = document.getElementById("liveFeedContainer");
 
 let markedStudents = new Set();
 let prevBoxes = [];
-let stableFrames = 0;
 let lastFaceSeen = Date.now();
 let isDetecting = false;
 let lowLightCounter = 0;
 
 // ---------------- LIVENESS & BLINK TRACKING ----------------
-let livenessVerified = false;
-let blinkCount = 0;
-let eyeVarianceHistory = [];
-let isBlinkDip = false;
-let blinkStartTime = 0;
-let consecutiveRecognitionFrames = 0;
+// Liveness is tracked separately for every recognised student (keyed by roll), so a
+// blink from one person can never verify a different face (e.g. a photo held up next
+// to them). A face is "live" only after its own eye-band variance dips and recovers
+// like a natural blink. There is no time-based bypass.
+const LIVENESS_STATE_TTL_MS = 1500;
+const livenessByRoll = new Map();
 
 // Multi-client isolated tracker ID
 const clientId = sessionStorage.getItem("cam_client_id") || "cam_" + Math.random().toString(36).substring(2, 11);
 sessionStorage.setItem("cam_client_id", clientId);
+
+function setResult(text, color) {
+    if (!resultEl) return;
+    resultEl.textContent = text;
+    resultEl.style.color = color || "var(--slate-200)";
+}
 
 // ---------------- WEBCAM INITIALIZATION & ERROR HANDLING ----------------
 navigator.mediaDevices.getUserMedia({
@@ -41,10 +46,10 @@ navigator.mediaDevices.getUserMedia({
 })
 .catch(err => {
     console.error("[WEBCAM HARDWARE ERROR]:", err);
-    if (resultEl) resultEl.innerHTML = "<span style='color:#f87171;'>Camera Hardware Error: Access blocked or device disconnected.</span>";
+    setResult("Camera Hardware Error: Access blocked or device disconnected.", "#f87171");
 
     if (fallbackAlert) {
-        if (fallbackIcon) fallbackIcon.innerText = "\uD83D\uDCF7";
+        if (fallbackIcon) fallbackIcon.innerText = "📷";
         if (fallbackTitle) fallbackTitle.innerText = "Camera Device Unavailable";
         if (fallbackSub) fallbackSub.innerText = "Webcam is disconnected or blocked. You can take attendance with Dynamic QR instead:";
         fallbackAlert.style.display = "flex";
@@ -60,12 +65,12 @@ function smoothBox(prev, curr) {
     if (!prev) return curr;
     const dx = Math.abs(curr[0] - prev[0]);
     const dy = Math.abs(curr[1] - prev[1]);
-    
+
     // Rapid movement: snap immediately with zero lag
     if (dx > 18 || dy > 18) {
         return curr;
     }
-    
+
     // Subtle smoothing when holding still
     const alpha = 0.35;
     return [
@@ -76,10 +81,31 @@ function smoothBox(prev, curr) {
     ];
 }
 
+function getLivenessState(roll) {
+    let state = livenessByRoll.get(roll);
+    if (!state) {
+        state = { history: [], isDip: false, dipStart: 0, verified: false, lastSeen: 0 };
+        livenessByRoll.set(roll, state);
+    }
+    state.lastSeen = Date.now();
+    return state;
+}
+
+/** Forget faces that left the frame so a returning (or substituted) face must blink again. */
+function pruneLivenessStates() {
+    const now = Date.now();
+    for (const [roll, state] of livenessByRoll) {
+        if (now - state.lastSeen > LIVENESS_STATE_TTL_MS) livenessByRoll.delete(roll);
+    }
+}
+
 /**
- * Computes gradient variance across the eye band to detect natural eye-blinks (Anti-Spoofing).
+ * Computes grey-level variance across the eye band of one face to detect a natural
+ * eye-blink (anti-spoofing). A blink is a variance dip below 88% of the rolling mean
+ * that recovers above 92% within 40-1200 ms. `box` must come from the same frame that
+ * was drawn into `tctx`.
  */
-function analyzeEyeLiveness(tctx, box) {
+function analyzeEyeLiveness(tctx, box, state) {
     try {
         const [x, y, w, h] = box;
         const eyeY = Math.max(0, Math.round(y + h * 0.18));
@@ -103,35 +129,27 @@ function analyzeEyeLiveness(tctx, box) {
         const mean = sum / count;
         const variance = (sumSq / count) - (mean * mean);
 
-        eyeVarianceHistory.push(variance);
-        if (eyeVarianceHistory.length > 8) eyeVarianceHistory.shift();
+        state.history.push(variance);
+        if (state.history.length > 8) state.history.shift();
 
-        if (eyeVarianceHistory.length >= 4) {
-            const avgVar = eyeVarianceHistory.reduce((a, b) => a + b, 0) / eyeVarianceHistory.length;
-            const currentVar = eyeVarianceHistory[eyeVarianceHistory.length - 1];
+        if (state.history.length >= 4) {
+            const avgVar = state.history.reduce((a, b) => a + b, 0) / state.history.length;
+            const currentVar = state.history[state.history.length - 1];
 
             // Natural blink transition
-            if (currentVar < avgVar * 0.88 && !isBlinkDip) {
-                isBlinkDip = true;
-                blinkStartTime = Date.now();
-            } else if (isBlinkDip && currentVar >= avgVar * 0.92) {
-                const duration = Date.now() - blinkStartTime;
+            if (currentVar < avgVar * 0.88 && !state.isDip) {
+                state.isDip = true;
+                state.dipStart = Date.now();
+            } else if (state.isDip && currentVar >= avgVar * 0.92) {
+                const duration = Date.now() - state.dipStart;
                 if (duration > 40 && duration < 1200) {
-                    blinkCount++;
-                    livenessVerified = true;
-                    updateLivenessBadge(true);
+                    state.verified = true;
                 }
-                isBlinkDip = false;
+                state.isDip = false;
             }
         }
-
-        // Auto-verify after 3 continuous stable recognitions
-        if (consecutiveRecognitionFrames >= 3) {
-            livenessVerified = true;
-            updateLivenessBadge(true);
-        }
     } catch (e) {
-        // Safe fallback
+        // getImageData can fail for boxes outside the canvas; skip this sample
     }
 }
 
@@ -142,7 +160,7 @@ function updateLivenessBadge(verified) {
         livenessBadge.style.background = "rgba(16, 185, 129, 0.15)";
         livenessBadge.style.color = "#34d399";
         livenessBadge.style.borderColor = "rgba(16, 185, 129, 0.3)";
-        livenessBadge.innerText = "Liveness: Verified \u2713";
+        livenessBadge.innerText = "Liveness: Verified ✓";
     } else {
         livenessBadge.className = "badge badge-rose";
         livenessBadge.style.background = "rgba(244, 63, 94, 0.15)";
@@ -152,32 +170,78 @@ function updateLivenessBadge(verified) {
     }
 }
 
-function addLiveFeedCard(roll, confidence, timeStr) {
+/**
+ * Prepend a card to the session feed.
+ * `status` is "marked" (new record) or "already" (record existed earlier today).
+ */
+function addLiveFeedCard(roll, confidence, timeStr, status) {
     if (!liveFeedContainer) return;
-    
+
     // Clear placeholder if present
     if (liveFeedContainer.innerText.includes("Awaiting verified face detections")) {
         liveFeedContainer.innerHTML = "";
     }
 
+    const isNew = status === "marked";
     const card = document.createElement("div");
     card.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius-md); padding:0.65rem 0.85rem; font-size:0.8rem;";
     card.innerHTML = `
         <div style="display:flex; align-items:center; gap:0.6rem;">
             <div style="width:30px; height:30px; border-radius:50%; background:var(--emerald-50); color:var(--emerald-600); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.75rem;">
-                \u2713
+                ✓
             </div>
             <div>
-                <div style="font-weight:700; color:var(--slate-800);">${roll}</div>
+                <div class="feed-roll" style="font-weight:700; color:var(--slate-800);"></div>
                 <div style="font-size:0.7rem; color:var(--slate-400);">FaceNet Confidence: ${Math.round(confidence * 100)}%</div>
             </div>
         </div>
         <div style="text-align:right;">
-            <span class="badge badge-green" style="font-size:0.68rem;">Recorded</span>
-            <div style="font-size:0.68rem; color:var(--slate-400); margin-top:2px;">${timeStr || new Date().toLocaleTimeString()}</div>
+            <span class="badge ${isNew ? "badge-green" : "badge-amber"}" style="font-size:0.68rem;">${isNew ? "Recorded" : "Already Logged"}</span>
+            <div class="feed-time" style="font-size:0.68rem; color:var(--slate-400); margin-top:2px;"></div>
         </div>
     `;
+    card.querySelector(".feed-roll").textContent = roll;
+    card.querySelector(".feed-time").textContent = timeStr || new Date().toLocaleTimeString();
     liveFeedContainer.prepend(card);
+}
+
+/** Submit a Face attendance record once a recognised face has proven liveness. */
+function markFaceAttendance(face) {
+    markedStudents.add(face.roll);
+
+    fetch("/mark_attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+            roll: face.roll,
+            method: "Face"
+        })
+    })
+    .then(async r => {
+        if (r.status === 401) {
+            window.location.href = "/";
+            return;
+        }
+        const markData = await r.json();
+        const nowTime = new Date().toLocaleTimeString();
+        if (markData.status === "marked") {
+            addLiveFeedCard(face.roll, face.confidence, nowTime, "marked");
+            setResult(`Attendance Recorded: ${face.roll} (Live Verified)`, "#34d399");
+        } else if (markData.status === "already marked today") {
+            addLiveFeedCard(face.roll, face.confidence, nowTime, "already");
+            setResult(`Already Logged Today: ${face.roll}`, "#fde68a");
+        } else {
+            // Not recorded: allow a retry on a later frame
+            markedStudents.delete(face.roll);
+            setResult(`Could not record ${face.roll}: ${markData.message || "server error"}`, "#f87171");
+        }
+    })
+    .catch(err => {
+        console.error("[MARK ERROR]:", err);
+        markedStudents.delete(face.roll);
+        setResult(`Network error while recording ${face.roll}. Retrying...`, "#f87171");
+    });
 }
 
 let lastDrawnFaces = [];
@@ -202,7 +266,7 @@ async function detectLoop() {
     const tempCanvas = document.createElement("canvas");
     tempCanvas.width = targetWidth;
     tempCanvas.height = targetHeight;
-    const tctx = tempCanvas.getContext("2d");
+    const tctx = tempCanvas.getContext("2d", { willReadFrequently: true });
     tctx.drawImage(video, 0, 0, targetWidth, targetHeight);
 
     const image = tempCanvas.toDataURL("image/jpeg", 0.60);
@@ -218,17 +282,22 @@ async function detectLoop() {
             })
         });
 
+        if (res.status === 401) {
+            window.location.href = "/";
+            return;
+        }
+
         const data = await res.json();
 
         // Low-lighting fallback handling
         if (data.status === "low_light" || data.error === "low light") {
             lowLightCounter++;
             if (lowLightCounter >= 2 && fallbackAlert) {
-                if (fallbackIcon) fallbackIcon.innerText = "\uD83C\uDF19";
+                if (fallbackIcon) fallbackIcon.innerText = "🌙";
                 if (fallbackTitle) fallbackTitle.innerText = "Sub-Optimal Lighting Detected";
                 if (fallbackSub) fallbackSub.innerText = "Facial recognition confidence may be reduced. Switch to instant QR check-in:";
                 fallbackAlert.style.display = "flex";
-                if (resultEl) resultEl.innerHTML = "<span style='color:#fde68a;'>Sub-optimal lighting: Please increase light or use Dynamic QR.</span>";
+                setResult("Sub-optimal lighting: Please increase light or use Dynamic QR.", "#fde68a");
             }
         } else {
             lowLightCounter = 0;
@@ -237,20 +306,23 @@ async function detectLoop() {
             }
         }
 
-        if (data.faces && data.faces.length > 0) {
+        const hasFreshFaces = Boolean(data.faces && data.faces.length > 0);
+        if (hasFreshFaces) {
             lastDrawnFaces = data.faces;
             lastFaceSeen = Date.now();
         }
 
-        const facesToRender = (data.faces && data.faces.length > 0)
+        // Briefly keep drawing the last boxes to avoid flicker between frames
+        const facesToRender = hasFreshFaces
             ? data.faces
             : ((Date.now() - lastFaceSeen < 350) ? lastDrawnFaces : []);
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (facesToRender.length > 0) {
-            stableFrames++;
             let newPrev = [];
+            let anyKnownFace = false;
+            let allKnownFacesLive = true;
 
             facesToRender.forEach((face, i) => {
                 const coordScaleX = video.clientWidth / targetWidth;
@@ -267,15 +339,22 @@ async function detectLoop() {
                 let box = smoothBox(prevBoxes[i], scaledBox);
                 newPrev.push(box);
 
+                // The server applies FACE_MATCH_THRESHOLD and flags non-matches as unknown
                 const isUnknown = (face.is_unknown || face.roll === "Unknown");
                 const isMarked = markedStudents.has(face.roll);
 
-                if (!isUnknown && face.confidence >= 0.70) {
-                    consecutiveRecognitionFrames++;
+                let isLive = false;
+                if (!isUnknown) {
+                    anyKnownFace = true;
+                    const state = getLivenessState(face.roll);
+                    // Only sample liveness on boxes computed for *this* frame; reused
+                    // boxes from an earlier frame would measure the wrong pixels.
+                    if (hasFreshFaces) {
+                        analyzeEyeLiveness(tctx, face.box, state);
+                    }
+                    isLive = state.verified;
+                    if (!isLive) allKnownFacesLive = false;
                 }
-
-                // Analyze eye liveness
-                analyzeEyeLiveness(tctx, face.box);
 
                 const [drawX, drawY, drawW, drawH] = box.map(Math.round);
 
@@ -285,7 +364,7 @@ async function detectLoop() {
                     themeColor = "#f43f5e"; // Rose for unregistered faces
                 } else if (isMarked) {
                     themeColor = "#10b981"; // Emerald for verified
-                } else if (livenessVerified) {
+                } else if (isLive) {
                     themeColor = "#06b6d4"; // Cyan for live verified
                 }
 
@@ -304,60 +383,38 @@ async function detectLoop() {
                 if (isUnknown) {
                     label = `Unregistered Face (${Math.round(face.confidence * 100)}%)`;
                 } else if (isMarked) {
-                    label = `\u2713 ${face.roll} (Verified)`;
+                    label = `✓ ${face.roll} (Verified)`;
                 } else {
                     label = `${face.roll} (${Math.round(face.confidence * 100)}%)`;
-                    if (!livenessVerified) {
+                    if (!isLive) {
                         label += " [Blink]";
                     }
                 }
                 ctx.fillText(label, drawX + 6, Math.max(18, drawY - 8));
 
-                // Mark attendance ONLY for registered students when confidence >= 0.70 AND liveness is confirmed
-                if (!isUnknown && !isMarked && face.confidence >= 0.70 && livenessVerified) {
-                    markedStudents.add(face.roll);
-
-                    fetch("/mark_attendance", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        credentials: "same-origin",
-                        body: JSON.stringify({
-                            roll: face.roll,
-                            method: "Face"
-                        })
-                    })
-                    .then(r => r.json())
-                    .then(markData => {
-                        const nowTime = new Date().toLocaleTimeString();
-                        addLiveFeedCard(face.roll, face.confidence, nowTime);
-                        if (markData.status === "marked") {
-                            if (resultEl) resultEl.innerHTML = `<span style="color:#34d399;">Attendance Recorded: <b>${face.roll}</b> (Live Verified)</span>`;
-                        } else {
-                            if (resultEl) resultEl.innerHTML = `<span style="color:#fde68a;">Already Logged Today: <b>${face.roll}</b></span>`;
-                        }
-                    })
-                    .catch(err => {
-                        console.error("[MARK ERROR]:", err);
-                    });
+                // Mark attendance ONLY for recognised students whose own blink was seen
+                if (!isUnknown && !isMarked && isLive) {
+                    markFaceAttendance(face);
                 }
             });
 
             prevBoxes = newPrev;
+            updateLivenessBadge(anyKnownFace && allKnownFacesLive);
+            pruneLivenessStates();
 
         } else {
+            pruneLivenessStates();
             if (Date.now() - lastFaceSeen > 900) {
                 prevBoxes = [];
-                stableFrames = 0;
-                consecutiveRecognitionFrames = 0;
-                livenessVerified = false;
+                livenessByRoll.clear();
                 updateLivenessBadge(false);
-                if (resultEl) resultEl.innerHTML = "Scanning camera field for student faces...";
+                setResult("Scanning camera field for student faces...");
             }
         }
 
     } catch (err) {
         console.error("[RECOGNIZE LOOP ERROR]:", err);
-        if (resultEl) resultEl.innerHTML = "<span style='color:#f87171;'>Camera stream sync reconnecting...</span>";
+        setResult("Camera stream sync reconnecting...", "#f87171");
     } finally {
         isDetecting = false;
         setTimeout(detectLoop, 30);

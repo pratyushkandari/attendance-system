@@ -16,13 +16,13 @@
         Enter your institutional Roll Number to record your session attendance.
     </p>
 
-    <input id="roll" class="input-mobile" placeholder="e.g. 2026CSE001" autocomplete="off" autocorrect="off" autocapitalize="characters" />
+    <input id="roll" class="input-mobile" placeholder="e.g. 2026CSE001" aria-label="Roll number" maxlength="50" autocomplete="off" autocorrect="off" autocapitalize="characters" />
     
-    <button onclick="verify()" class="btn-mobile">
+    <button id="verifyBtn" type="button" onclick="verify()" class="btn-mobile">
         Verify Student Identity &rarr;
     </button>
     
-    <p id="msg" style="margin-top:1rem; font-size:0.8rem; color:#e11d48; font-weight:600; min-height:1.2rem;"></p>
+    <p id="msg" role="status" aria-live="polite" style="margin-top:1rem; font-size:0.8rem; color:#e11d48; font-weight:600; min-height:1.2rem;"></p>
 
     <div class="footer-note">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
@@ -30,6 +30,6 @@
     </div>
 </div>
 
-<script src="/static/js/qr_mobile.js"></script>
+<script src="/static/js/qr_mobile.js?v=2.4.3"></script>
 
 {% endblock %}
