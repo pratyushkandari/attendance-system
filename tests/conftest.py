@@ -29,7 +29,8 @@ class TestConfig(Config):
     the environment, and ``drop_all()`` in teardown would wipe a real database.
     """
     TESTING = True
-    SECRET_KEY = "test-secret-key-for-unit-tests"
+    # At least 32 bytes: PyJWT warns about shorter HS256 keys (RFC 7518 section 3.2)
+    SECRET_KEY = "test-secret-key-for-unit-tests-0123456789"
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     SQLALCHEMY_ENGINE_OPTIONS: dict = {}
     SQLALCHEMY_TRACK_MODIFICATIONS = False
