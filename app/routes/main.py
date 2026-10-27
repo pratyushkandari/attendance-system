@@ -8,6 +8,7 @@ from functools import lru_cache, wraps
 from typing import Any, Dict, Optional, Tuple
 
 import jwt
+import segno
 from flask import (
     Blueprint,
     current_app,
@@ -17,6 +18,7 @@ from flask import (
     render_template,
     request,
     session,
+    url_for,
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -262,6 +264,9 @@ def generate_qr_token():
     """
     Generates a cryptographically signed time-based token for dynamic QR session.
     Token is advertised as valid for 15 seconds (see the timing model above).
+
+    Returns the token, the student check-in URL that embeds it, and that URL rendered
+    as a QR code (``qr_svg``, an SVG data URI ready for an ``<img src>``).
     """
     serializer = get_qr_serializer()
     payload = {
@@ -269,10 +274,16 @@ def generate_qr_token():
         "created_at": time.time()
     }
     token = serializer.dumps(payload)
+    checkin_url = url_for("main.qr_mobile", token=token, _external=True)
+    # Rendered here so live check-in URLs never leave the server; a third-party QR image
+    # API would receive a usable token on every rotation.
+    qr_svg = segno.make(checkin_url, error="m").svg_data_uri(border=4, omitsize=True, light="white")
     return jsonify({
         "status": "success",
         "token": token,
-        "expires_in": QR_TOKEN_TTL_SECONDS
+        "expires_in": QR_TOKEN_TTL_SECONDS,
+        "checkin_url": checkin_url,
+        "qr_svg": qr_svg,
     })
 
 
