@@ -7,7 +7,7 @@ import re
 import time
 import uuid
 from functools import lru_cache, wraps
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import cv2
 import jwt
@@ -34,7 +34,7 @@ main_bp = Blueprint("main", __name__)
 
 
 # ================= REQUEST PARSING HELPERS =================
-def get_json_body() -> Dict[str, Any]:
+def get_json_body() -> dict[str, Any]:
     """
     Return the JSON request body as a dict, or ``{}`` if it is missing or malformed.
 
@@ -45,13 +45,13 @@ def get_json_body() -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def get_str_field(data: Dict[str, Any], key: str) -> str:
+def get_str_field(data: dict[str, Any], key: str) -> str:
     """Return ``data[key]`` stripped if it is a string, otherwise ``""``."""
     value = data.get(key)
     return value.strip() if isinstance(value, str) else ""
 
 
-def decode_image_payload(value: Any) -> Optional[np.ndarray]:
+def decode_image_payload(value: Any) -> np.ndarray | None:
     """
     Decode a ``data:image/...;base64,...`` string (as made by canvas.toDataURL) into a
     BGR image. Returns ``None`` for anything that is not a decodable image, so callers
@@ -151,7 +151,7 @@ def admin_required(f):
 # Each record expires LOCKOUT_DURATION_SECONDS after the most recent failure.
 # The read-modify-write below is not atomic; under heavy parallel guessing a few extra
 # attempts may slip through before the lock engages, which is acceptable for this use.
-def _lockout_settings() -> Tuple[int, int]:
+def _lockout_settings() -> tuple[int, int]:
     """Return (threshold, duration_seconds) from the app config."""
     return (
         int(current_app.config.get("LOCKOUT_THRESHOLD", 3)),
@@ -169,7 +169,7 @@ def _dummy_password_hash() -> str:
     return generate_password_hash(uuid.uuid4().hex)
 
 
-def _get_failure_record(email: str) -> Dict[str, float]:
+def _get_failure_record(email: str) -> dict[str, float]:
     raw = cache.get(_lockout_key(email))
     if raw:
         try:
@@ -196,7 +196,7 @@ def record_failed_login(email: str) -> int:
     return int(record["count"])
 
 
-def is_account_locked(email: str) -> Tuple[bool, int]:
+def is_account_locked(email: str) -> tuple[bool, int]:
     """
     Return ``(locked, remaining_minutes)`` for ``email``.
 
@@ -259,7 +259,7 @@ def get_qr_serializer():
     )
 
 
-def check_qr_token(token: Optional[str], max_age: int) -> Tuple[bool, str]:
+def check_qr_token(token: str | None, max_age: int) -> tuple[bool, str]:
     """
     Validate a signed QR session token.
 

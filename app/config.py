@@ -8,7 +8,7 @@ hardening, login lockout limits, and biometric thresholds.
 
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 # Load environment configuration from .env file if available
 try:
@@ -32,8 +32,8 @@ def _env_flag(name: str, default: bool = False) -> bool:
 # `docker-compose.yml`). Anyone can read them and forge sessions, JWTs and QR tokens,
 # so `create_app` refuses to start with one of them, exactly as with an empty key.
 PUBLISHED_SECRET_KEYS = frozenset({
-    "dev-attendance-secret-key-change-in-production-2026",  # nosec B105
-    "production-secure-random-secret-key-xyz-987654321",  # nosec B105
+    "dev-attendance-secret-key-change-in-production-2026",
+    "production-secure-random-secret-key-xyz-987654321",
 })
 
 # Largest accepted request body. The biggest legitimate payload is one enrollment
@@ -73,13 +73,13 @@ class Config:
     # Production connection pool resiliency for cloud PostgreSQL instances
     # Mitigates dropped connections caused by cloud firewalls or AWS RDS idle timeouts
     if db_url and db_url.startswith("postgresql"):
-        SQLALCHEMY_ENGINE_OPTIONS: Dict[str, Any] = {
+        SQLALCHEMY_ENGINE_OPTIONS: dict[str, Any] = {
             "pool_pre_ping": True,
             "pool_recycle": 280,
             "pool_timeout": 20
         }
     else:
-        SQLALCHEMY_ENGINE_OPTIONS: Dict[str, Any] = {}
+        SQLALCHEMY_ENGINE_OPTIONS: dict[str, Any] = {}
 
     # Admin self-registration. By default only the very first administrator can sign up
     # without being logged in (bootstrap); afterwards an existing admin must create new

@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -9,11 +9,11 @@ DEFAULT_MATCH_THRESHOLD: float = 0.70
 
 
 def vectorized_matrix_match(
-    query_emb: Optional[np.ndarray],
+    query_emb: np.ndarray | None,
     rolls: Sequence[str],
-    matrix: Optional[np.ndarray],
+    matrix: np.ndarray | None,
     threshold: float = DEFAULT_MATCH_THRESHOLD,
-) -> Tuple[Optional[str], float]:
+) -> tuple[str | None, float]:
     """
     Hardware-accelerated BLAS matrix dot-product vector matching.
 

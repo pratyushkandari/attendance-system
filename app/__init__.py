@@ -1,5 +1,3 @@
-from typing import Type
-
 from flask import Flask, jsonify
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -8,7 +6,7 @@ from .config import PUBLISHED_SECRET_KEYS, Config
 from .extensions import db
 
 
-def create_app(config_class: Type[Config] = Config) -> Flask:
+def create_app(config_class: type[Config] = Config) -> Flask:
     """
     Application factory for the Attendance System microservice.
 

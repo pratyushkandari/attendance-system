@@ -34,11 +34,11 @@ jobs:
 
       - name: Run Code Style & Linter (Ruff)
         run: |
-          ruff check . --exit-zero
+          ruff check .
 
       - name: Run Static Security Scanner (Bandit)
         run: |
-          bandit -r app/ -ll --exit-zero
+          bandit -r app/ -ll
 
       - name: Run Automated Test Suite (Pytest)
         run: |
