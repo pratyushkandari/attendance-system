@@ -267,6 +267,61 @@ def test_malformed_image_payloads_are_client_errors(authenticated_client):
         assert res.get_json() == {"faces": [], "error": "Invalid or corrupt image data."}
 
 
+def test_face_profiles_are_cached_between_keyframes(authenticated_client, app, monkeypatch):
+    # Profiles used to be reloaded and JSON-parsed from the database on every keyframe
+    import app.routes.attendance as attendance_routes
+
+    loads = []
+    real_load = attendance_routes._load_student_profiles
+
+    def counting_load():
+        loads.append(1)
+        return real_load()
+
+    monkeypatch.setattr(attendance_routes, "_load_student_profiles", counting_load)
+
+    roll = _register(authenticated_client, "Quinn")
+    with app.app_context():
+        rolls, matrix = attendance_routes.get_face_profiles()
+        assert (rolls, matrix) == ([], None)
+        attendance_routes.get_face_profiles()
+        assert len(loads) == 1
+
+    # Enrollment invalidates the cache, so the new face is matchable on the next keyframe
+    res = authenticated_client.post("/save_face_data", json={"roll": roll, "embeddings": [[1.0] * 512]})
+    assert res.status_code == 200
+    with app.app_context():
+        rolls, matrix = attendance_routes.get_face_profiles()
+    assert rolls == [roll]
+    assert matrix.shape == (1, 512)
+    assert len(loads) == 2
+
+
+def test_today_counts_use_ist_day_boundaries(authenticated_client, app):
+    from datetime import timedelta
+
+    from app.extensions import db
+    from app.models import Attendance
+    from app.models.student import ist_day_bounds, ist_now
+
+    present = _register(authenticated_client, "Rita")
+    yesterday = _register(authenticated_client, "Sam")
+    with app.app_context():
+        day_start, _ = ist_day_bounds(ist_now().date())
+        db.session.add(Attendance(roll=present, method="QR", timestamp=day_start))
+        db.session.add(Attendance(roll=yesterday, method="QR", timestamp=day_start - timedelta(seconds=1)))
+        db.session.commit()
+        today = day_start.date().isoformat()
+
+    assert authenticated_client.get("/dashboard_data").get_json()["present"] == 1
+    csv_rows = authenticated_client.get(f"/export_records?date={today}").data.decode().strip().splitlines()
+    assert len(csv_rows) == 2 and present in csv_rows[1]
+
+    # The student whose only record is from yesterday can still check in today
+    res = authenticated_client.post("/mark_attendance", json={"roll": yesterday, "method": "Face"})
+    assert res.get_json()["status"] == "marked"
+
+
 def test_roll_sequence_is_per_department_prefix(authenticated_client):
     # "CS" must not continue the "CSE" sequence just because 2026CS% matches 2026CSE001
     assert _register(authenticated_client, "Nina", dept="CSE") == "2026CSE001"

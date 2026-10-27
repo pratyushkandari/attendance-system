@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.ai.facenet_model import get_embedding_from_crop, mtcnn
 from app.extensions import db
 from app.models import Student
+from app.routes.attendance import invalidate_face_profiles
 from app.routes.main import (
     QR_TOKEN_SUBMIT_MAX_AGE,
     admin_required,
@@ -255,6 +256,7 @@ def save_face_data():
 
         student.set_embedding(avg_embedding)
         db.session.commit()
+        invalidate_face_profiles()
 
         return jsonify({"status": "saved", "message": f"Biometric face profile created for {student.roll}."})
 
