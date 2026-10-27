@@ -1,6 +1,6 @@
 import json
-from datetime import datetime, timedelta
-from typing import List, Optional, Sequence, Union
+from datetime import date, datetime, timedelta
+from typing import List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -15,6 +15,17 @@ IST_OFFSET = timedelta(hours=5, minutes=30)
 def ist_now() -> datetime:
     """Return the current Indian Standard Time (UTC+5:30) as a naive datetime."""
     return datetime.utcnow() + IST_OFFSET
+
+
+def ist_day_bounds(day: date) -> Tuple[datetime, datetime]:
+    """
+    Return the ``[start, end)`` naive IST datetimes covering ``day``.
+
+    Filtering ``start <= timestamp < end`` can use the index on
+    ``attendance.timestamp``; ``DATE(timestamp) = day`` cannot.
+    """
+    start = datetime.combine(day, datetime.min.time())
+    return start, start + timedelta(days=1)
 
 
 class Student(db.Model):

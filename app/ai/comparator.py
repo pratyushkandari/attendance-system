@@ -46,33 +46,31 @@ def compare_embeddings(
 
 def vectorized_matrix_match(
     query_emb: Optional[np.ndarray],
-    student_profiles: Sequence[Tuple[str, np.ndarray]],
+    rolls: Sequence[str],
+    matrix: Optional[np.ndarray],
     threshold: float = DEFAULT_MATCH_THRESHOLD,
 ) -> Tuple[Optional[str], float]:
     """
     Hardware-accelerated BLAS matrix dot-product vector matching.
 
-    Stacks candidate student vectors into an (N, 512) float32 matrix and computes
-    single-call BLAS SGEMV matrix-vector multiplication against the query vector.
-    Executes in O(N * D) time using CPU SIMD AVX2/AVX-512 instructions.
+    Scores the query against every enrolled vector with one BLAS matrix-vector
+    multiplication. Because all vectors are L2-normalised, each dot product is the
+    cosine similarity.
 
     Args:
         query_emb: L2-normalized 1D NumPy array of shape (512,).
-        student_profiles: Sequence of (student_roll, 512d_numpy_vector) tuples.
+        rolls: Student roll numbers, one per matrix row.
+        matrix: (N, 512) float32 matrix of L2-normalized enrolled vectors, or None.
         threshold: Minimum cosine score threshold for a valid identity match.
 
     Returns:
         Tuple of (matched_roll, confidence_score). If confidence < threshold or
         query/profiles are invalid, matched_roll is None.
     """
-    if query_emb is None or not student_profiles:
+    if query_emb is None or matrix is None or len(rolls) == 0:
         return None, -1.0
 
     try:
-        rolls, embeddings_list = zip(*student_profiles)  # noqa: B905 (py3.9 has no strict=)
-        matrix = np.vstack(embeddings_list)  # Matrix shape: (N, 512)
-
-        # High-speed SIMD matrix-vector dot product (BLAS C-level execution)
         scores = np.dot(matrix, query_emb)
         best_idx = int(np.argmax(scores))
         best_score = float(scores[best_idx])

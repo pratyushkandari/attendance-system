@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -16,7 +16,7 @@ from app.ai.facenet_model import get_embedding_from_crop, mtcnn
 from app.extensions import db
 from app.metrics import ACTIVE_CAMERA_CLIENTS, ATTENDANCE_MARKED_TOTAL
 from app.models import Attendance, Student
-from app.models.student import ist_now
+from app.models.student import ist_day_bounds, ist_now
 from app.routes.main import (
     QR_TOKEN_SUBMIT_MAX_AGE,
     admin_required,
@@ -90,6 +90,38 @@ def _load_student_profiles():
     return profiles
 
 
+# ---------------- FACE PROFILE CACHE ----------------
+# Reloading and JSON-parsing every stored embedding on each detection keyframe took
+# ~350 ms at 1,000 enrolled students, so the stacked matrix is cached per process.
+# /save_face_data invalidates it in the process that handled the enrollment; other
+# Gunicorn workers or pods pick the change up once their copy is older than the TTL.
+PROFILE_CACHE_TTL_SECONDS = 30
+_profile_cache: Dict[str, Any] = {"loaded_at": None, "rolls": [], "matrix": None}
+_profile_cache_lock = threading.Lock()
+
+
+def invalidate_face_profiles() -> None:
+    """Make the next keyframe reload face profiles from the database."""
+    with _profile_cache_lock:
+        _profile_cache["loaded_at"] = None
+
+
+def get_face_profiles() -> Tuple[List[str], Optional[np.ndarray]]:
+    """
+    Return ``(rolls, matrix)`` for all enrolled faces, where row ``i`` of the
+    ``(N, 512)`` float32 matrix belongs to ``rolls[i]``. ``matrix`` is None when
+    nobody is enrolled.
+    """
+    with _profile_cache_lock:
+        loaded_at = _profile_cache["loaded_at"]
+        if loaded_at is None or time.monotonic() - loaded_at > PROFILE_CACHE_TTL_SECONDS:
+            profiles = _load_student_profiles()
+            _profile_cache["rolls"] = [roll for roll, _ in profiles]
+            _profile_cache["matrix"] = np.vstack([emb for _, emb in profiles]) if profiles else None
+            _profile_cache["loaded_at"] = time.monotonic()
+        return _profile_cache["rolls"], _profile_cache["matrix"]
+
+
 # ---------------- RECOGNIZE WITH MULTI-FACE TRACKING ----------------
 @attendance_bp.route("/recognize_with_box", methods=["POST"])
 @admin_required
@@ -145,8 +177,7 @@ def recognize_with_box():
                 new_trackers = []
                 new_tracker_data = []
 
-                # Fetch all student embeddings once per keyframe
-                student_profiles = _load_student_profiles()
+                profile_rolls, profile_matrix = get_face_profiles()
 
                 for i, box in enumerate(boxes):
                     # MTCNN confidence filter
@@ -173,7 +204,7 @@ def recognize_with_box():
 
                     # Vectorized dot product against all enrolled unit vectors
                     best_match, best_score = vectorized_matrix_match(
-                        emb, student_profiles, threshold=match_threshold
+                        emb, profile_rolls, profile_matrix, threshold=match_threshold
                     )
                     is_match = best_match is not None
                     roll_label = best_match if is_match else "Unknown"
@@ -268,13 +299,14 @@ def mark_attendance():
         roll = student.roll
 
         now = ist_now()
-        today = now.date()
+        day_start, day_end = ist_day_bounds(now.date())
 
         # Check duplicate for today. This is an application-level check (no DB unique
         # constraint), so two simultaneous requests for the same roll could both pass.
         existing = Attendance.query.filter(
             Attendance.roll == roll,
-            func.date(Attendance.timestamp) == today
+            Attendance.timestamp >= day_start,
+            Attendance.timestamp < day_end,
         ).first()
 
         if existing:
@@ -359,7 +391,8 @@ def export_records():
         )
 
         if filter_date:
-            query = query.filter(func.date(Attendance.timestamp) == filter_date)
+            day_start, day_end = ist_day_bounds(filter_date)
+            query = query.filter(Attendance.timestamp >= day_start, Attendance.timestamp < day_end)
         if dept_filter:
             query = query.filter(Student.department == dept_filter)
         if roll_filter:
@@ -419,14 +452,15 @@ def clear_records():
 def dashboard_data():
     try:
         total_students = Student.query.count()
-        today = ist_now().date()
+        day_start, day_end = ist_day_bounds(ist_now().date())
 
         # Count distinct students present today in SQL instead of loading the whole
         # attendance history into memory on every dashboard refresh.
         today_present = db.session.query(
             func.count(func.distinct(Attendance.roll))
         ).filter(
-            func.date(Attendance.timestamp) == today
+            Attendance.timestamp >= day_start,
+            Attendance.timestamp < day_end,
         ).scalar() or 0
 
         return jsonify({

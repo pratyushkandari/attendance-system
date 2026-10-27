@@ -42,9 +42,14 @@ class TestConfig(Config):
 @pytest.fixture(autouse=True)
 def _reset_cache():
     """Clear lockout counters and other cached state between tests."""
+    from app.routes.attendance import invalidate_face_profiles
+
+    # Each test gets a fresh database, so profiles cached by a previous test are stale
     _memory_cache.clear()
+    invalidate_face_profiles()
     yield
     _memory_cache.clear()
+    invalidate_face_profiles()
 
 
 @pytest.fixture
