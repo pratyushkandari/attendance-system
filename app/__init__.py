@@ -1,15 +1,12 @@
-import logging
-from typing import Type
+from flask import Flask, jsonify
+from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.middleware.proxy_fix import ProxyFix
 
-from flask import Flask
-
-from .config import DEFAULT_SECRET_KEY, Config
+from .config import PUBLISHED_SECRET_KEYS, Config
 from .extensions import db
 
-logger = logging.getLogger(__name__)
 
-
-def create_app(config_class: Type[Config] = Config) -> Flask:
+def create_app(config_class: type[Config] = Config) -> Flask:
     """
     Application factory for the Attendance System microservice.
 
@@ -24,15 +21,26 @@ def create_app(config_class: Type[Config] = Config) -> Flask:
 
     Returns:
         Configured Flask WSGI application instance.
+
+    Raises:
+        RuntimeError: ``SECRET_KEY`` is empty or one of the keys published in this
+            repository (tests, which set ``TESTING``, are exempt).
     """
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    if app.config.get("SECRET_KEY") == DEFAULT_SECRET_KEY and not app.config.get("TESTING"):
-        logger.warning(
-            "SECRET_KEY is using the built-in development default. Set the SECRET_KEY "
-            "environment variable; otherwise sessions, JWTs and QR tokens can be forged."
+    secret_key = app.config.get("SECRET_KEY")
+    if not app.config.get("TESTING") and (not secret_key or secret_key in PUBLISHED_SECRET_KEYS):
+        raise RuntimeError(
+            "SECRET_KEY is missing or is a value published in this repository; anyone could "
+            "forge admin sessions, JWTs and QR tokens with it. Set SECRET_KEY to a long random "
+            "value, e.g. the output of: python -c \"import secrets; print(secrets.token_hex(32))\""
         )
+
+    # Hosted deployments (Render, a k8s ingress) terminate TLS at a proxy. Trusting one
+    # X-Forwarded-Proto hop lets absolute URLs, such as the check-in URL encoded in the
+    # classroom QR code, use the https scheme that students' phones will reach.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
 
     db.init_app(app)
 
@@ -48,6 +56,10 @@ def create_app(config_class: Type[Config] = Config) -> Flask:
     app.register_blueprint(main_bp)
     app.register_blueprint(student_bp)
     app.register_blueprint(attendance_bp)
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_too_large(_error):
+        return jsonify({"error": "Request body is too large."}), 413
 
     # Initialize Prometheus observability metrics
     from .metrics import init_metrics

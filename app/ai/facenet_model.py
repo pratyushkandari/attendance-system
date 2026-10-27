@@ -1,6 +1,6 @@
 import logging
 import threading
-from typing import Any, Optional
+from typing import Any
 
 import cv2
 import numpy as np
@@ -15,8 +15,8 @@ torch.set_num_threads(1)
 
 device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
-_mtcnn_instance: Optional[MTCNN] = None
-_resnet_instance: Optional[InceptionResnetV1] = None
+_mtcnn_instance: MTCNN | None = None
+_resnet_instance: InceptionResnetV1 | None = None
 
 # Gunicorn runs several threads per worker. Without a lock, the first concurrent
 # requests could each build their own model copy, doubling peak memory on small
@@ -57,21 +57,17 @@ def get_resnet() -> InceptionResnetV1:
     return _resnet_instance
 
 
-# Backward-compatible proxy object
 class MTCNNProxy:
-    """Dynamic proxy delegating calls to lazy-loaded MTCNN singleton."""
+    """Lets routes call ``mtcnn.detect(...)`` while the model itself loads on first use."""
 
     def detect(self, *args: Any, **kwargs: Any) -> Any:
         return get_mtcnn().detect(*args, **kwargs)
-
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        return get_mtcnn()(*args, **kwargs)
 
 
 mtcnn = MTCNNProxy()
 
 
-def get_embedding_from_crop(face_bgr_crop: Optional[np.ndarray]) -> Optional[np.ndarray]:
+def get_embedding_from_crop(face_bgr_crop: np.ndarray | None) -> np.ndarray | None:
     """
     Extract a normalized 512-D facial embedding vector directly from a cropped BGR image.
 

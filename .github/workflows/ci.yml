@@ -29,17 +29,16 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt
-          pip install ruff bandit
+          pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-dev.txt
 
       - name: Run Code Style & Linter (Ruff)
         run: |
-          ruff check . --exit-zero
+          ruff check .
 
       - name: Run Static Security Scanner (Bandit)
         run: |
-          bandit -r app/ -ll --exit-zero
+          bandit -r app/ -ll
 
       - name: Run Automated Test Suite (Pytest)
         run: |

@@ -7,8 +7,8 @@ Thank you for your interest in contributing to the **Enterprise Biometric Attend
 ## 1. Development Environment Setup
 
 ### Prerequisites
-- Python 3.9+ (Python 3.10 recommended)
-- PostgreSQL 14+ (or SQLite for local development via `DATABASE_URL=sqlite:///attendance.db`)
+- Python 3.10+
+- PostgreSQL 16 (or SQLite for local development via `DATABASE_URL=sqlite:///attendance.db`)
 - Redis 7+ (optional; transparent in-memory fallback enabled)
 - Git 2.30+
 
@@ -23,14 +23,18 @@ python -m venv venv
 source venv/bin/activate       # On Linux/macOS
 .\venv\Scripts\Activate.ps1    # On Windows PowerShell
 
-# Install dependencies (CPU-only PyTorch first, as in CI and the Dockerfile)
+# Install dependencies (pinned CPU-only PyTorch first, as in CI and the Dockerfile),
+# then the app plus test and lint tools
 pip install --upgrade pip
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements.txt
+pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-dev.txt
 
-# Configure environment variables
+# Configure environment variables, then set SECRET_KEY in .env (the app will not start without it):
+#   python -c "import secrets; print(secrets.token_hex(32))"
 cp .env.example .env
 ```
+
+Runtime dependencies live in `requirements.txt` (installed into the Docker image); test and lint tools live in `requirements-dev.txt`. Keep the PyTorch pins identical in the Dockerfile, `.github/workflows/ci.yml`, the Makefile and the README.
 
 ---
 
@@ -42,9 +46,10 @@ cp .env.example .env
 - **PEP 257**: All modules, classes, and exported functions must feature Google-style docstrings.
 - **Formatting**: Line length capped at 100 characters.
 
-Run linter checks before committing:
+Run the same checks as CI before committing (both fail the CI build on any finding):
 ```bash
-ruff check app/ tests/
+ruff check .
+bandit -r app/ -ll
 ```
 
 ### Git Commit Guidelines
@@ -66,7 +71,7 @@ We enforce the [Conventional Commits](https://www.conventionalcommits.org/) spec
 Pull Requests will not be merged unless:
 1. **100% of existing test cases pass** with zero warnings or deprecation regressions.
 2. **New endpoints or business logic are accompanied by automated tests** under `tests/`.
-3. Code coverage does not drop below the current baseline (about 70% line+branch; the model-inference code needs downloaded weights and is verified end to end instead).
+3. Code coverage does not drop below the current baseline (about 74% line+branch; the model-inference code needs downloaded weights and is verified end to end instead).
 
 The suite uses an in-memory SQLite database and the in-process cache (see `tests/conftest.py`), so it never touches your local PostgreSQL or Redis.
 
@@ -93,7 +98,7 @@ python -m pytest tests/test_attendance.py
 2. Make atomic, well-documented commits following the Conventional Commit syntax.
 3. Validate locally:
    ```bash
-   python -m pytest -v
+   ruff check . && bandit -r app/ -ll && python -m pytest -v
    ```
 4. Push branch to your fork or remote origin and open a Pull Request targeting `main`.
 5. Ensure PR description details:

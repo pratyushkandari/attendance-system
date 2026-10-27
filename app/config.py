@@ -8,7 +8,7 @@ hardening, login lockout limits, and biometric thresholds.
 
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 # Load environment configuration from .env file if available
 try:
@@ -28,17 +28,29 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-# Development-only fallback. `create_app` logs a warning when this value is in use
-# outside of tests, because anyone who knows it can forge sessions, JWTs and QR tokens.
-DEFAULT_SECRET_KEY = "dev-attendance-secret-key-change-in-production-2026"  # nosec B105
+# Keys that were published in this repository (old config default, `.env.example`,
+# `docker-compose.yml`). Anyone can read them and forge sessions, JWTs and QR tokens,
+# so `create_app` refuses to start with one of them, exactly as with an empty key.
+PUBLISHED_SECRET_KEYS = frozenset({
+    "dev-attendance-secret-key-change-in-production-2026",
+    "production-secure-random-secret-key-xyz-987654321",
+})
+
+# Largest accepted request body. The biggest legitimate payload is one enrollment
+# frame (a full-resolution JPEG data URL, well under 2 MB); the cap stops public
+# endpoints from buffering arbitrarily large bodies in memory.
+MAX_REQUEST_BYTES = 10 * 1024 * 1024
 
 
 class Config:
     """
     Centralized application configuration object for Flask application factory.
     """
-    # Core Cryptographic Master Secret (signs session cookies, JWTs and QR tokens)
-    SECRET_KEY: str = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
+    # Core Cryptographic Master Secret (signs session cookies, JWTs and QR tokens).
+    # Required: `create_app` raises if it is empty or a published key (outside tests).
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
+
+    MAX_CONTENT_LENGTH: int = MAX_REQUEST_BYTES
 
     # Session cookie hardening. HttpOnly keeps the cookie away from page scripts and
     # SameSite=Lax stops browsers from attaching it to cross-site POSTs (CSRF), which
@@ -49,7 +61,7 @@ class Config:
     # PostgreSQL / Cloud Database Connection URL
     db_url: str = os.getenv(
         "DATABASE_URL",
-        "postgresql://postgres:postgresql@localhost:5432/attendence_db"
+        "postgresql://postgres:postgres@localhost:5432/attendence_db"
     )
     # Fix Render/Heroku postgres:// dialect compatibility for SQLAlchemy 2.0+
     if db_url and db_url.startswith("postgres://"):
@@ -61,17 +73,13 @@ class Config:
     # Production connection pool resiliency for cloud PostgreSQL instances
     # Mitigates dropped connections caused by cloud firewalls or AWS RDS idle timeouts
     if db_url and db_url.startswith("postgresql"):
-        SQLALCHEMY_ENGINE_OPTIONS: Dict[str, Any] = {
+        SQLALCHEMY_ENGINE_OPTIONS: dict[str, Any] = {
             "pool_pre_ping": True,
             "pool_recycle": 280,
             "pool_timeout": 20
         }
     else:
-        SQLALCHEMY_ENGINE_OPTIONS: Dict[str, Any] = {}
-
-    # Distributed Redis Cache URL. Informational only: `SafeCacheStore` reads the
-    # REDIS_URL environment variable directly and uses Redis only when it is set.
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        SQLALCHEMY_ENGINE_OPTIONS: dict[str, Any] = {}
 
     # Admin self-registration. By default only the very first administrator can sign up
     # without being logged in (bootstrap); afterwards an existing admin must create new

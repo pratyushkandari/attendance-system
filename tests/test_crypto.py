@@ -47,6 +47,38 @@ def test_verify_qr_token_api(client):
     assert res.get_json()["valid"] is True
 
 
+def test_qr_tokens_are_signed_with_hmac_sha256(client, app):
+    import hashlib
+
+    from itsdangerous import URLSafeTimedSerializer
+
+    from app.routes.main import QR_TOKEN_VERIFY_MAX_AGE, check_qr_token
+
+    secret, salt = app.config["SECRET_KEY"], "qr-attendance-token"
+    with app.app_context():
+        sha1_token = URLSafeTimedSerializer(secret, salt=salt).dumps({"nonce": "n"})
+        # A token signed with the itsdangerous default (HMAC-SHA1) must not verify
+        assert check_qr_token(sha1_token, QR_TOKEN_VERIFY_MAX_AGE) == (False, "Invalid QR code signature.")
+
+    with client.session_transaction() as sess:
+        sess["admin"] = "admin@test.com"
+    token = client.get("/generate_qr_token").get_json()["token"]
+    sha256 = URLSafeTimedSerializer(secret, salt=salt, signer_kwargs={"digest_method": hashlib.sha256})
+    assert "nonce" in sha256.loads(token, max_age=QR_TOKEN_VERIFY_MAX_AGE)
+
+
+def test_generate_qr_token_renders_qr_code_locally(authenticated_client):
+    from urllib.parse import quote
+
+    res = authenticated_client.get("/generate_qr_token", headers={"X-Forwarded-Proto": "https"})
+    data = res.get_json()
+    assert res.status_code == 200
+    # The QR image is produced by the server instead of api.qrserver.com, and encodes
+    # the https check-in URL the proxy reports.
+    assert data["qr_svg"].startswith("data:image/svg+xml")
+    assert data["checkin_url"] == f"https://localhost/qr_mobile?token={quote(data['token'], safe='')}"
+
+
 def test_safe_cache_store_ttl_and_eviction():
     from app.extensions import cache
 

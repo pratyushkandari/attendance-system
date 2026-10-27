@@ -40,23 +40,23 @@
         <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:0.5rem; margin-top:1.25rem;">
             <div id="sampleStep1" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
                 <div style="font-weight:700;">1. Straight</div>
-                <div id="sampleStatus1" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+                <div id="sampleStatus1" style="color:var(--slate-400); font-size:0.65rem;">Pending</div>
             </div>
             <div id="sampleStep2" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
                 <div style="font-weight:700;">2. Upward</div>
-                <div id="sampleStatus2" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+                <div id="sampleStatus2" style="color:var(--slate-400); font-size:0.65rem;">Pending</div>
             </div>
             <div id="sampleStep3" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
                 <div style="font-weight:700;">3. Left</div>
-                <div id="sampleStatus3" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+                <div id="sampleStatus3" style="color:var(--slate-400); font-size:0.65rem;">Pending</div>
             </div>
             <div id="sampleStep4" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
                 <div style="font-weight:700;">4. Right</div>
-                <div id="sampleStatus4" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+                <div id="sampleStatus4" style="color:var(--slate-400); font-size:0.65rem;">Pending</div>
             </div>
             <div id="sampleStep5" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:var(--radius-sm); padding:0.5rem 0.25rem; text-align:center; font-size:0.7rem; color:var(--slate-400);">
                 <div style="font-weight:700;">5. Neutral</div>
-                <div id="sampleStatus5" style="color:var(--slate-500); font-size:0.65rem;">Pending</div>
+                <div id="sampleStatus5" style="color:var(--slate-400); font-size:0.65rem;">Pending</div>
             </div>
         </div>
 
@@ -66,7 +66,7 @@
                 <span id="status" style="color:var(--slate-300);" aria-live="polite">Camera ready. Align face within viewport reticle.</span>
             </div>
             <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--slate-400);">
-                Resolution: 640x480 &bull; PyTorch InceptionResnet
+                FaceNet (InceptionResnetV1) &bull; 5 Samples
             </div>
         </div>
 
@@ -82,6 +82,6 @@
     </div>
 </div>
 
-<script src="/static/js/capture.js?v=2.4.3"></script>
+<script src="/static/js/capture.js?v=2.5.0"></script>
 
 {% endblock %}

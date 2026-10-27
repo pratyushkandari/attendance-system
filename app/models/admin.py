@@ -8,7 +8,7 @@ class Admin(db.Model):
     Attributes:
         id: Primary key surrogate integer.
         email: Unique login email identity.
-        password: Argon2id or bcrypt salted cryptographic hash.
+        password: Salted scrypt hash from Werkzeug's ``generate_password_hash``.
     """
     __tablename__ = "admins"
 

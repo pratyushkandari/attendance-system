@@ -1,6 +1,14 @@
+import logging
 import os
 
-from app import create_app
+# Configure logging before the app package is imported: app.extensions connects to
+# Redis at import time, and without a handler every INFO line (cache status, runbook
+# log lines) would be silently dropped.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+from app import create_app  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 app = create_app()
 
@@ -12,7 +20,12 @@ if __name__ == "__main__":
     else:
         try:
             from gunicorn.app.base import BaseApplication
-
+        except ImportError:
+            # Only a missing Gunicorn falls back to Flask's server; Gunicorn startup errors
+            # must surface instead of silently serving production traffic with a dev server.
+            logger.warning("Gunicorn is not installed; starting Flask's development server on 0.0.0.0:%s", port)
+            app.run(host="0.0.0.0", port=port)
+        else:
             class StandaloneApplication(BaseApplication):
                 def __init__(self, application, options=None):
                     self.options = options or {}
@@ -33,8 +46,5 @@ if __name__ == "__main__":
                 "threads": 4,
                 "timeout": 120,
             }
-            print(f"[PROD WSGI] Starting Gunicorn server on 0.0.0.0:{port} (1 worker, 4 threads)")
+            logger.info("Starting Gunicorn on 0.0.0.0:%s (1 worker, 4 threads)", port)
             StandaloneApplication(app, options).run()
-        except Exception as e:
-            print(f"[WSGI FALLBACK] Starting standard server ({e}) on 0.0.0.0:{port}")
-            app.run(host="0.0.0.0", port=port)

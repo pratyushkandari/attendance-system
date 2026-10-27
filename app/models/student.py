@@ -1,6 +1,7 @@
 import json
-from datetime import datetime, timedelta
-from typing import List, Optional, Sequence, Union
+from collections.abc import Sequence
+from datetime import date, datetime, timedelta
+from typing import Optional
 
 import numpy as np
 
@@ -15,6 +16,17 @@ IST_OFFSET = timedelta(hours=5, minutes=30)
 def ist_now() -> datetime:
     """Return the current Indian Standard Time (UTC+5:30) as a naive datetime."""
     return datetime.utcnow() + IST_OFFSET
+
+
+def ist_day_bounds(day: date) -> tuple[datetime, datetime]:
+    """
+    Return the ``[start, end)`` naive IST datetimes covering ``day``.
+
+    Filtering ``start <= timestamp < end`` can use the index on
+    ``attendance.timestamp``; ``DATE(timestamp) = day`` cannot.
+    """
+    start = datetime.combine(day, datetime.min.time())
+    return start, start + timedelta(days=1)
 
 
 class Student(db.Model):
@@ -37,7 +49,7 @@ class Student(db.Model):
     # 512-Dimensional normalized facial vector stored as serialized JSON
     embedding = db.Column(db.Text)
 
-    def set_embedding(self, emb: Optional[Union[np.ndarray, Sequence[float], List[float]]]) -> None:
+    def set_embedding(self, emb: np.ndarray | Sequence[float] | list[float] | None) -> None:
         """
         Serializes a 512-D unit vector into a JSON string for persistent storage.
 
@@ -50,7 +62,7 @@ class Student(db.Model):
             else:
                 self.embedding = json.dumps(list(emb))
 
-    def get_embedding(self) -> Optional[List[float]]:
+    def get_embedding(self) -> list[float] | None:
         """
         Deserializes the stored JSON representation back into a Python float list.
 

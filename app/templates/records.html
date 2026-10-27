@@ -27,7 +27,7 @@
             </svg>
             Download CSV Report
         </a>
-        <button onclick="clearRecords()" class="btn btn-danger">
+        <button type="button" onclick="purgeAttendanceRecords(this, loadRecords)" class="btn btn-danger">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -41,7 +41,7 @@
     <div class="table-wrapper">
         <table id="table" class="app-table">
             <tr>
-                <td colspan="3" style="text-align:center; padding:2.5rem 1rem; color:var(--slate-400);">
+                <td colspan="3" style="text-align:center; padding:2.5rem 1rem; color:var(--slate-500);" role="status">
                     <div style="display:flex; align-items:center; justify-content:center; gap:0.5rem;">
                         <span class="pulse-dot"></span>
                         <span>Retrieving persistent ledger from database...</span>
@@ -52,6 +52,6 @@
     </div>
 </div>
 
-<script src="/static/js/records.js?v=2.4.3"></script>
+<script src="/static/js/records.js?v=2.5.0"></script>
 
 {% endblock %}

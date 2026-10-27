@@ -73,13 +73,9 @@
             }
             const data = await res.json();
 
-            if (res.ok && data.status === "success" && data.token) {
-                const baseUrl = window.location.origin;
-                const dynamicUrl = `${baseUrl}/qr_mobile?token=${encodeURIComponent(data.token)}`;
-
-                // The QR image is rendered by the public api.qrserver.com service
-                document.getElementById("qrImage").src =
-                    `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(dynamicUrl)}&t=${Date.now()}`;
+            if (res.ok && data.status === "success" && data.qr_svg) {
+                // The server renders the check-in URL as an SVG QR code (no third party)
+                document.getElementById("qrImage").src = data.qr_svg;
 
                 setQrStatus(STATUS_OK, false);
                 resetCountdown();

@@ -21,6 +21,7 @@ spec:
     spec:
       containers:
         - name: attendance-api
+          # Build and push this image yourself; no workflow in this repository publishes it.
           image: ghcr.io/pratyushkandari/attendance-system:latest
           imagePullPolicy: IfNotPresent
           ports:
@@ -40,6 +41,9 @@ spec:
                 secretKeyRef:
                   name: attendance-secrets
                   key: secret-key
+            # These manifests do not deploy Redis. Provide a Service named redis-service so
+            # login-lockout counters are shared by all replicas; if it is unreachable each
+            # pod falls back to its own in-memory counters.
             - name: REDIS_URL
               value: "redis://redis-service:6379/0"
           resources:

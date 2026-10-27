@@ -77,7 +77,7 @@ groups:
    Ensure environment variables limit BLAS/OpenMP thread thrashing:
    `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, `MKL_NUM_THREADS=1`.
 4. **Emergency Mitigation (Degraded Mode):**
-   Advise operators at the affected kiosk to click **"Switch to QR Session"**. Dynamic QR attendance uses zero CPU inference and executes in $< 1\text{ ms}$.
+   Advise operators at the affected kiosk to click **"Switch to QR Session"**. Dynamic QR attendance needs no model inference, only an HMAC check and one database write per student.
 
 ---
 
@@ -117,15 +117,14 @@ groups:
    * The platform's two-tier cache automatically diverts all key-value operations to localized in-memory stores with timestamp expiration.
    * Student check-ins and attendance marking continue operating normally.
 2. **Recovery Procedure:**
-   Check Redis pod status:
+   Redis is not part of the manifests in `k8s/`; the app expects a Service named `redis-service`. Check whatever backs that Service (the label and deployment name below are examples):
    ```bash
-   kubectl describe pod -l app=attendance-redis
-   kubectl logs -l app=attendance-redis --tail=100
+   kubectl get endpoints redis-service
+   kubectl describe pod -l app=<your-redis-label>
+   kubectl logs -l app=<your-redis-label> --tail=100
+   kubectl rollout restart deployment <your-redis-deployment>
    ```
-   Restart Redis deployment:
-   ```bash
-   kubectl rollout restart deployment attendance-redis
-   ```
+   With Docker Compose: `docker compose logs redis` and `docker compose restart redis`.
    Once Redis is back online, `SafeCacheStore` re-probes it within 30 seconds and switches back automatically (log line: `[CACHE] Redis connection restored.`). Lockout counters recorded in memory during the outage are not copied to Redis.
 
 ---
@@ -134,7 +133,7 @@ groups:
 
 1. **Deploy New Build to Kubernetes:**
    ```bash
-   kubectl set image deployment/attendance-api-deployment attendance-api=ghcr.io/pratyushkandari/attendance-system:v2.4.3 --record
+   kubectl set image deployment/attendance-api-deployment attendance-api=ghcr.io/pratyushkandari/attendance-system:v2.5.0
    ```
 2. **Monitor Rolling Rollout:**
    ```bash
@@ -146,6 +145,32 @@ groups:
    ```bash
    kubectl rollout undo deployment/attendance-api-deployment
    ```
+
+---
+
+### Playbook E: App Exits at Startup with `RuntimeError: SECRET_KEY is missing...`
+
+**Cause:** `SECRET_KEY` is unset, empty, or one of the values that were published in this repository (old config default, `.env.example`, `docker-compose.yml`). Since v2.5.0 the app refuses to start rather than sign sessions, JWTs and QR tokens with a guessable key.
+
+1. Generate a key: `python -c "import secrets; print(secrets.token_hex(32))"`.
+2. Set it where the deployment reads it: `.env` (local and Docker Compose), the `attendance-secrets` Secret key `secret-key` (Kubernetes), or the service's environment settings (Render).
+3. Restart. Existing sessions, JWTs and QR codes signed with the old key become invalid.
+
+---
+
+### Playbook F: Kiosk Finds No Faces; Logs Show `unexpected EOF ... The file might be corrupted`
+
+**Cause:** The VGGFace2 FaceNet weights (`20180402-114759-vggface2.pt`, 111,898,327 bytes) are downloaded on the first face request into the PyTorch cache (`/root/.cache/torch/checkpoints/` in the container). If that download is cut short, the partial file stays in the cache and facenet-pytorch never downloads it again, so every embedding fails until the file is removed. (Observed during the v2.5.0 verification: a cached copy was 424,967 bytes short.)
+
+1. Check the file size:
+   ```bash
+   docker exec attendance_app ls -l /root/.cache/torch/checkpoints/
+   ```
+2. If it is not 111,898,327 bytes, delete it; the next face request downloads it again:
+   ```bash
+   docker exec attendance_app rm /root/.cache/torch/checkpoints/20180402-114759-vggface2.pt
+   ```
+3. Container filesystems are reset when the container is recreated, so each new container downloads the weights again on first use.
 
 ---
 

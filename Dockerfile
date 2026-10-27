@@ -18,12 +18,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 1. Install lightweight CPU-only PyTorch build (saves >400MB RAM)
+# 1. Install lightweight CPU-only PyTorch build (saves >400MB RAM).
+#    Keep these versions in sync with CI, the Makefile and the README.
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+    pip install --no-cache-dir torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
 
 # 2. Install remaining requirements
 COPY requirements.txt .

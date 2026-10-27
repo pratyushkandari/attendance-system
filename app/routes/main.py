@@ -1,12 +1,18 @@
+import base64
+import binascii
 import datetime
+import hashlib
 import json
 import re
 import time
 import uuid
-from functools import wraps
-from typing import Any, Dict, Optional, Tuple
+from functools import lru_cache, wraps
+from typing import Any
 
+import cv2
 import jwt
+import numpy as np
+import segno
 from flask import (
     Blueprint,
     current_app,
@@ -16,6 +22,7 @@ from flask import (
     render_template,
     request,
     session,
+    url_for,
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -27,7 +34,7 @@ main_bp = Blueprint("main", __name__)
 
 
 # ================= REQUEST PARSING HELPERS =================
-def get_json_body() -> Dict[str, Any]:
+def get_json_body() -> dict[str, Any]:
     """
     Return the JSON request body as a dict, or ``{}`` if it is missing or malformed.
 
@@ -38,10 +45,27 @@ def get_json_body() -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def get_str_field(data: Dict[str, Any], key: str) -> str:
+def get_str_field(data: dict[str, Any], key: str) -> str:
     """Return ``data[key]`` stripped if it is a string, otherwise ``""``."""
     value = data.get(key)
     return value.strip() if isinstance(value, str) else ""
+
+
+def decode_image_payload(value: Any) -> np.ndarray | None:
+    """
+    Decode a ``data:image/...;base64,...`` string (as made by canvas.toDataURL) into a
+    BGR image. Returns ``None`` for anything that is not a decodable image, so callers
+    can answer with a client error instead of failing inside base64/OpenCV.
+    """
+    if not isinstance(value, str) or "," not in value:
+        return None
+    try:
+        img_bytes = base64.b64decode(value.split(",", 1)[1], validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if not img_bytes:
+        return None
+    return cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
 
 # ================= JWT TOKEN HELPERS =================
@@ -49,7 +73,7 @@ def generate_jwt_token(email, role="admin", expires_in_seconds=86400):
     """
     Generates a stateless HS256 signed JSON Web Token (JWT) valid for 24 hours.
     """
-    secret = current_app.config.get("SECRET_KEY", "fallback-secret")
+    secret = current_app.config["SECRET_KEY"]
     payload = {
         "sub": email,
         "role": role,
@@ -63,7 +87,7 @@ def decode_jwt_token(token):
     """
     Decodes and validates JWT token signature and expiration.
     """
-    secret = current_app.config.get("SECRET_KEY", "fallback-secret")
+    secret = current_app.config["SECRET_KEY"]
     return jwt.decode(token, secret, algorithms=["HS256"])
 
 
@@ -101,8 +125,7 @@ def admin_required(f):
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1].strip()
             try:
-                payload = decode_jwt_token(token)
-                request.jwt_user = payload.get("sub")
+                decode_jwt_token(token)
                 return f(*args, **kwargs)
             except jwt.ExpiredSignatureError:
                 return jsonify({"error": "JWT access token has expired."}), 401
@@ -113,13 +136,12 @@ def admin_required(f):
         if "admin" in session:
             return f(*args, **kwargs)
 
-        # 3. Unauthorized: API callers get JSON 401, browsers are redirected to login.
-        # Note: HTML pages such as /register_page also match the "/register" prefix;
-        # they are redirected earlier by `block_unauthorized` below.
-        if request.is_json or request.path.startswith(("/mark_", "/clear_", "/save_", "/register", "/records", "/dashboard_data", "/recognize", "/verify_student", "/capture_face", "/generate_qr_token")):
-            return jsonify({"error": "Unauthorized. Bearer JWT token or Admin session required."}), 401
-
-        return redirect("/")
+        # 3. Unauthorized: a browser navigating to a link (e.g. the CSV export) is sent to
+        # the login page; API callers (fetch, curl, Postman send */* or JSON) get a JSON 401.
+        # Admin HTML pages never get here: `block_unauthorized` redirects them first.
+        if request.accept_mimetypes.best == "text/html":
+            return redirect("/")
+        return jsonify({"error": "Unauthorized. Bearer JWT token or Admin session required."}), 401
     return decorated_function
 
 
@@ -129,7 +151,7 @@ def admin_required(f):
 # Each record expires LOCKOUT_DURATION_SECONDS after the most recent failure.
 # The read-modify-write below is not atomic; under heavy parallel guessing a few extra
 # attempts may slip through before the lock engages, which is acceptable for this use.
-def _lockout_settings() -> Tuple[int, int]:
+def _lockout_settings() -> tuple[int, int]:
     """Return (threshold, duration_seconds) from the app config."""
     return (
         int(current_app.config.get("LOCKOUT_THRESHOLD", 3)),
@@ -141,7 +163,13 @@ def _lockout_key(email: str) -> str:
     return f"login_failures:{email}"
 
 
-def _get_failure_record(email: str) -> Dict[str, float]:
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    """A hash of a random password with the same cost as real admin hashes."""
+    return generate_password_hash(uuid.uuid4().hex)
+
+
+def _get_failure_record(email: str) -> dict[str, float]:
     raw = cache.get(_lockout_key(email))
     if raw:
         try:
@@ -168,7 +196,7 @@ def record_failed_login(email: str) -> int:
     return int(record["count"])
 
 
-def is_account_locked(email: str) -> Tuple[bool, int]:
+def is_account_locked(email: str) -> tuple[bool, int]:
     """
     Return ``(locked, remaining_minutes)`` for ``email``.
 
@@ -222,11 +250,16 @@ QR_TOKEN_SUBMIT_MAX_AGE = 35
 
 
 def get_qr_serializer():
-    secret = current_app.config.get("SECRET_KEY", "fallback-secret")
-    return URLSafeTimedSerializer(secret, salt="qr-attendance-token")
+    # itsdangerous signs with HMAC-SHA1 unless told otherwise; the QR channel is
+    # documented (and audited) as HMAC-SHA256.
+    return URLSafeTimedSerializer(
+        current_app.config["SECRET_KEY"],
+        salt="qr-attendance-token",
+        signer_kwargs={"digest_method": hashlib.sha256},
+    )
 
 
-def check_qr_token(token: Optional[str], max_age: int) -> Tuple[bool, str]:
+def check_qr_token(token: str | None, max_age: int) -> tuple[bool, str]:
     """
     Validate a signed QR session token.
 
@@ -251,6 +284,9 @@ def generate_qr_token():
     """
     Generates a cryptographically signed time-based token for dynamic QR session.
     Token is advertised as valid for 15 seconds (see the timing model above).
+
+    Returns the token, the student check-in URL that embeds it, and that URL rendered
+    as a QR code (``qr_svg``, an SVG data URI ready for an ``<img src>``).
     """
     serializer = get_qr_serializer()
     payload = {
@@ -258,10 +294,16 @@ def generate_qr_token():
         "created_at": time.time()
     }
     token = serializer.dumps(payload)
+    checkin_url = url_for("main.qr_mobile", token=token, _external=True)
+    # Rendered here so live check-in URLs never leave the server; a third-party QR image
+    # API would receive a usable token on every rotation.
+    qr_svg = segno.make(checkin_url, error="m").svg_data_uri(border=4, omitsize=True, light="white")
     return jsonify({
         "status": "success",
         "token": token,
-        "expires_in": QR_TOKEN_TTL_SECONDS
+        "expires_in": QR_TOKEN_TTL_SECONDS,
+        "checkin_url": checkin_url,
+        "qr_svg": qr_svg,
     })
 
 
@@ -518,7 +560,11 @@ def login_admin():
 
     admin = Admin.query.filter_by(email=email).first()
 
-    if admin and check_password_hash(admin.password, password):
+    # Always run one scrypt check, even for unknown emails: skipping it made failed logins
+    # for unknown addresses ~100x faster, which revealed which emails belong to admins.
+    password_ok = check_password_hash(admin.password if admin else _dummy_password_hash(), password)
+
+    if admin and password_ok:
         # Reset failed attempts
         reset_failed_logins(email)
         session["admin"] = admin.email
@@ -558,10 +604,3 @@ def logout():
     response = redirect("/")
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return response
-
-
-@main_bp.route("/admin_login")
-def admin_login():
-    if "admin" in session:
-        return redirect("/dashboard")
-    return render_template("admin_login.html", allow_admin_signup=admin_signup_open())
