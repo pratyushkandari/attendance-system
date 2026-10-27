@@ -11,7 +11,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/attendence_db
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=production-secure-random-secret-key-xyz-987654321
+      # Read from .env next to this file (see .env.example); compose stops if it is unset.
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env (see .env.example)}
       - PYTHONUNBUFFERED=1
     depends_on:
       db:

@@ -212,3 +212,58 @@ def test_session_cookie_is_httponly_and_samesite_lax(client):
     cookie = res.headers.get("Set-Cookie", "")
     assert "HttpOnly" in cookie
     assert "SameSite=Lax" in cookie
+
+
+def test_login_hashes_password_for_unknown_email(client, monkeypatch):
+    # Skipping the scrypt check for unknown emails made those failures ~100x faster,
+    # which let anyone find admin addresses by timing the response.
+    import app.routes.main as main_routes
+
+    calls = []
+    real_check = main_routes.check_password_hash
+
+    def spy(pwhash, password):
+        calls.append(pwhash)
+        return real_check(pwhash, password)
+
+    monkeypatch.setattr(main_routes, "check_password_hash", spy)
+    res = client.post("/login_admin", json={"email": "nobody@test.com", "password": "Wrong123!x"})
+    assert res.status_code == 401
+    assert len(calls) == 1
+    assert calls[0].startswith("scrypt:")
+
+
+def test_anonymous_export_returns_json_401_to_api_clients(client):
+    res = client.get("/export_records")
+    assert res.status_code == 401
+    assert "Unauthorized" in res.get_json()["error"]
+
+
+def test_anonymous_browser_navigation_redirects_to_login(client):
+    res = client.get("/export_records", headers={"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"})
+    assert res.status_code == 302
+    assert res.headers["Location"].endswith("/")
+
+
+def test_oversized_request_body_is_rejected_with_json_413(client):
+    body = b'{"token": "' + b"a" * (11 * 1024 * 1024) + b'"}'
+    res = client.post("/verify_qr_token", data=body, content_type="application/json")
+    assert res.status_code == 413
+    assert "too large" in res.get_json()["error"]
+
+
+def test_create_app_refuses_missing_or_published_secret_key():
+    import pytest
+
+    from app import create_app
+    from app.config import Config
+
+    for key in ("", "dev-attendance-secret-key-change-in-production-2026"):
+        class InsecureConfig(Config):
+            TESTING = False
+            SECRET_KEY = key
+            SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+            SQLALCHEMY_ENGINE_OPTIONS: dict = {}
+
+        with pytest.raises(RuntimeError, match="SECRET_KEY"):
+            create_app(InsecureConfig)

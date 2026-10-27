@@ -1,9 +1,10 @@
 import datetime
+import hashlib
 import json
 import re
 import time
 import uuid
-from functools import wraps
+from functools import lru_cache, wraps
 from typing import Any, Dict, Optional, Tuple
 
 import jwt
@@ -49,7 +50,7 @@ def generate_jwt_token(email, role="admin", expires_in_seconds=86400):
     """
     Generates a stateless HS256 signed JSON Web Token (JWT) valid for 24 hours.
     """
-    secret = current_app.config.get("SECRET_KEY", "fallback-secret")
+    secret = current_app.config["SECRET_KEY"]
     payload = {
         "sub": email,
         "role": role,
@@ -63,7 +64,7 @@ def decode_jwt_token(token):
     """
     Decodes and validates JWT token signature and expiration.
     """
-    secret = current_app.config.get("SECRET_KEY", "fallback-secret")
+    secret = current_app.config["SECRET_KEY"]
     return jwt.decode(token, secret, algorithms=["HS256"])
 
 
@@ -113,13 +114,12 @@ def admin_required(f):
         if "admin" in session:
             return f(*args, **kwargs)
 
-        # 3. Unauthorized: API callers get JSON 401, browsers are redirected to login.
-        # Note: HTML pages such as /register_page also match the "/register" prefix;
-        # they are redirected earlier by `block_unauthorized` below.
-        if request.is_json or request.path.startswith(("/mark_", "/clear_", "/save_", "/register", "/records", "/dashboard_data", "/recognize", "/verify_student", "/capture_face", "/generate_qr_token")):
-            return jsonify({"error": "Unauthorized. Bearer JWT token or Admin session required."}), 401
-
-        return redirect("/")
+        # 3. Unauthorized: a browser navigating to a link (e.g. the CSV export) is sent to
+        # the login page; API callers (fetch, curl, Postman send */* or JSON) get a JSON 401.
+        # Admin HTML pages never get here: `block_unauthorized` redirects them first.
+        if request.accept_mimetypes.best == "text/html":
+            return redirect("/")
+        return jsonify({"error": "Unauthorized. Bearer JWT token or Admin session required."}), 401
     return decorated_function
 
 
@@ -139,6 +139,12 @@ def _lockout_settings() -> Tuple[int, int]:
 
 def _lockout_key(email: str) -> str:
     return f"login_failures:{email}"
+
+
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    """A hash of a random password with the same cost as real admin hashes."""
+    return generate_password_hash(uuid.uuid4().hex)
 
 
 def _get_failure_record(email: str) -> Dict[str, float]:
@@ -222,8 +228,13 @@ QR_TOKEN_SUBMIT_MAX_AGE = 35
 
 
 def get_qr_serializer():
-    secret = current_app.config.get("SECRET_KEY", "fallback-secret")
-    return URLSafeTimedSerializer(secret, salt="qr-attendance-token")
+    # itsdangerous signs with HMAC-SHA1 unless told otherwise; the QR channel is
+    # documented (and audited) as HMAC-SHA256.
+    return URLSafeTimedSerializer(
+        current_app.config["SECRET_KEY"],
+        salt="qr-attendance-token",
+        signer_kwargs={"digest_method": hashlib.sha256},
+    )
 
 
 def check_qr_token(token: Optional[str], max_age: int) -> Tuple[bool, str]:
@@ -518,7 +529,11 @@ def login_admin():
 
     admin = Admin.query.filter_by(email=email).first()
 
-    if admin and check_password_hash(admin.password, password):
+    # Always run one scrypt check, even for unknown emails: skipping it made failed logins
+    # for unknown addresses ~100x faster, which revealed which emails belong to admins.
+    password_ok = check_password_hash(admin.password if admin else _dummy_password_hash(), password)
+
+    if admin and password_ok:
         # Reset failed attempts
         reset_failed_logins(email)
         session["admin"] = admin.email
