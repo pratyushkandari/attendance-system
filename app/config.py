@@ -81,10 +81,6 @@ class Config:
     else:
         SQLALCHEMY_ENGINE_OPTIONS: Dict[str, Any] = {}
 
-    # Distributed Redis Cache URL. Informational only: `SafeCacheStore` reads the
-    # REDIS_URL environment variable directly and uses Redis only when it is set.
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
     # Admin self-registration. By default only the very first administrator can sign up
     # without being logged in (bootstrap); afterwards an existing admin must create new
     # admins. Set to true only for public demo deployments.

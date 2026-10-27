@@ -57,15 +57,11 @@ def get_resnet() -> InceptionResnetV1:
     return _resnet_instance
 
 
-# Backward-compatible proxy object
 class MTCNNProxy:
-    """Dynamic proxy delegating calls to lazy-loaded MTCNN singleton."""
+    """Lets routes call ``mtcnn.detect(...)`` while the model itself loads on first use."""
 
     def detect(self, *args: Any, **kwargs: Any) -> Any:
         return get_mtcnn().detect(*args, **kwargs)
-
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        return get_mtcnn()(*args, **kwargs)
 
 
 mtcnn = MTCNNProxy()

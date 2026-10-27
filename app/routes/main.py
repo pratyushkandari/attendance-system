@@ -125,8 +125,7 @@ def admin_required(f):
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1].strip()
             try:
-                payload = decode_jwt_token(token)
-                request.jwt_user = payload.get("sub")
+                decode_jwt_token(token)
                 return f(*args, **kwargs)
             except jwt.ExpiredSignatureError:
                 return jsonify({"error": "JWT access token has expired."}), 401
@@ -605,10 +604,3 @@ def logout():
     response = redirect("/")
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return response
-
-
-@main_bp.route("/admin_login")
-def admin_login():
-    if "admin" in session:
-        return redirect("/dashboard")
-    return render_template("admin_login.html", allow_admin_signup=admin_signup_open())
