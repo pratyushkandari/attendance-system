@@ -20,8 +20,8 @@ help:
 
 install:
 	pip install --upgrade pip
-	pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-	pip install -r requirements.txt
+	pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+	pip install -r requirements-dev.txt
 
 run:
 	python run.py
