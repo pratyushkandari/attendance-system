@@ -2,6 +2,7 @@ from typing import Type
 
 from flask import Flask, jsonify
 from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import PUBLISHED_SECRET_KEYS, Config
 from .extensions import db
@@ -37,6 +38,11 @@ def create_app(config_class: Type[Config] = Config) -> Flask:
             "forge admin sessions, JWTs and QR tokens with it. Set SECRET_KEY to a long random "
             "value, e.g. the output of: python -c \"import secrets; print(secrets.token_hex(32))\""
         )
+
+    # Hosted deployments (Render, a k8s ingress) terminate TLS at a proxy. Trusting one
+    # X-Forwarded-Proto hop lets absolute URLs, such as the check-in URL encoded in the
+    # classroom QR code, use the https scheme that students' phones will reach.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
 
     db.init_app(app)
 
