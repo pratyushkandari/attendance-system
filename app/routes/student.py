@@ -1,4 +1,3 @@
-import base64
 import logging
 import math
 import re
@@ -15,6 +14,7 @@ from app.routes.main import (
     QR_TOKEN_SUBMIT_MAX_AGE,
     admin_required,
     check_qr_token,
+    decode_image_payload,
     get_json_body,
     get_str_field,
     is_admin_request,
@@ -156,19 +156,9 @@ def capture_face():
     enrollment loop can simply retry with the next frame.
     """
     try:
-        data = get_json_body()
-        image_raw = data.get("image", "")
-
-        if not isinstance(image_raw, str) or "," not in image_raw:
-            return jsonify({"error": "invalid image payload"}), 400
-
-        image_data = image_raw.split(",")[1]
-        img_bytes = base64.b64decode(image_data)
-        npimg = np.frombuffer(img_bytes, np.uint8)
-        frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
-
+        frame = decode_image_payload(get_json_body().get("image"))
         if frame is None:
-            return jsonify({"error": "corrupt image"}), 400
+            return jsonify({"error": "invalid or corrupt image payload"}), 400
 
         # Convert BGR -> RGB for MTCNN
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

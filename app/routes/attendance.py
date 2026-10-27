@@ -1,4 +1,3 @@
-import base64
 import csv
 import io
 import logging
@@ -22,6 +21,7 @@ from app.routes.main import (
     QR_TOKEN_SUBMIT_MAX_AGE,
     admin_required,
     check_qr_token,
+    decode_image_payload,
     get_json_body,
     get_str_field,
     is_admin_request,
@@ -105,19 +105,11 @@ def recognize_with_box():
     """
     try:
         data = get_json_body()
-        image_raw = data.get("image", "")
         client_id = get_str_field(data, "client_id")[:64] or "default_camera"
 
-        if not isinstance(image_raw, str) or "," not in image_raw:
-            return jsonify({"faces": [], "error": "Invalid image data."})
-
-        image_data = image_raw.split(",")[1]
-        img_bytes = base64.b64decode(image_data)
-        npimg = np.frombuffer(img_bytes, np.uint8)
-        frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
-
+        frame = decode_image_payload(data.get("image"))
         if frame is None:
-            return jsonify({"faces": [], "error": "Corrupt frame."})
+            return jsonify({"faces": [], "error": "Invalid or corrupt image data."})
 
         # Low-light check
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)

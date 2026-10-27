@@ -1,3 +1,5 @@
+import base64
+import binascii
 import datetime
 import hashlib
 import json
@@ -7,7 +9,9 @@ import uuid
 from functools import lru_cache, wraps
 from typing import Any, Dict, Optional, Tuple
 
+import cv2
 import jwt
+import numpy as np
 import segno
 from flask import (
     Blueprint,
@@ -45,6 +49,23 @@ def get_str_field(data: Dict[str, Any], key: str) -> str:
     """Return ``data[key]`` stripped if it is a string, otherwise ``""``."""
     value = data.get(key)
     return value.strip() if isinstance(value, str) else ""
+
+
+def decode_image_payload(value: Any) -> Optional[np.ndarray]:
+    """
+    Decode a ``data:image/...;base64,...`` string (as made by canvas.toDataURL) into a
+    BGR image. Returns ``None`` for anything that is not a decodable image, so callers
+    can answer with a client error instead of failing inside base64/OpenCV.
+    """
+    if not isinstance(value, str) or "," not in value:
+        return None
+    try:
+        img_bytes = base64.b64decode(value.split(",", 1)[1], validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if not img_bytes:
+        return None
+    return cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
 
 # ================= JWT TOKEN HELPERS =================
