@@ -48,28 +48,4 @@ async function loadDashboard() {
     }
 }
 
-async function confirmClearModal() {
-    if (!confirm("Are you sure you want to permanently clear all attendance records? This action cannot be undone.")) {
-        return;
-    }
-
-    try {
-        const res = await fetch("/clear_records", { method: "POST" });
-        if (res.status === 401) {
-            window.location.href = "/";
-            return;
-        }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            alert(data.error || "Failed to clear attendance records.");
-            return;
-        }
-        alert(data.message || "Attendance records successfully cleared.");
-        loadDashboard();
-    } catch (err) {
-        console.error("[CLEAR ERROR]:", err);
-        alert("Failed to clear attendance records.");
-    }
-}
-
 loadDashboard();
