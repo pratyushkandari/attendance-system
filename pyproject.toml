@@ -7,7 +7,7 @@ name = "enterprise-biometric-attendance-system"
 version = "2.4.3"
 description = "Dual-channel biometric face recognition & dynamic HMAC QR attendance microservice"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
     { name = "Pratyush Kandari", email = "pratyush@example.com" }
