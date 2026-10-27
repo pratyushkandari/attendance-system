@@ -158,6 +158,22 @@ groups:
 
 ---
 
+### Playbook F: Kiosk Finds No Faces; Logs Show `unexpected EOF ... The file might be corrupted`
+
+**Cause:** The VGGFace2 FaceNet weights (`20180402-114759-vggface2.pt`, 111,898,327 bytes) are downloaded on the first face request into the PyTorch cache (`/root/.cache/torch/checkpoints/` in the container). If that download is cut short, the partial file stays in the cache and facenet-pytorch never downloads it again, so every embedding fails until the file is removed. (Observed during the v2.5.0 verification: a cached copy was 424,967 bytes short.)
+
+1. Check the file size:
+   ```bash
+   docker exec attendance_app ls -l /root/.cache/torch/checkpoints/
+   ```
+2. If it is not 111,898,327 bytes, delete it; the next face request downloads it again:
+   ```bash
+   docker exec attendance_app rm /root/.cache/torch/checkpoints/20180402-114759-vggface2.pt
+   ```
+3. Container filesystems are reset when the container is recreated, so each new container downloads the weights again on first use.
+
+---
+
 ## 4. Hardware Sizing & Capacity Guidelines
 
 | Daily Active Students | Pod Count | CPU Request / Limit | RAM Request / Limit | Database Sizing |
