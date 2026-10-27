@@ -254,6 +254,19 @@ def test_recognize_returns_no_faces_for_empty_scene(authenticated_client):
     assert res.get_json() == {"faces": []}
 
 
+def test_malformed_image_payloads_are_client_errors(authenticated_client):
+    # Invalid base64 used to escape as a 500 ("server error") with a logged traceback
+    bad_images = ["data:image/jpeg;base64,@@@notbase64", "data:image/jpeg;base64,", "not-a-data-url"]
+    for image in bad_images:
+        res = authenticated_client.post("/capture_face", json={"image": image})
+        assert res.status_code == 400, image
+        assert res.get_json()["error"] == "invalid or corrupt image payload"
+
+        res = authenticated_client.post("/recognize_with_box", json={"image": image, "client_id": "cam"})
+        assert res.status_code == 200
+        assert res.get_json() == {"faces": [], "error": "Invalid or corrupt image data."}
+
+
 def test_roll_sequence_is_per_department_prefix(authenticated_client):
     # "CS" must not continue the "CSE" sequence just because 2026CS% matches 2026CSE001
     assert _register(authenticated_client, "Nina", dept="CSE") == "2026CSE001"
