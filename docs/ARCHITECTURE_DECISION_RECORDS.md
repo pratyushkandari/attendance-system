@@ -1,134 +1,136 @@
-# Architecture Decision Records (ADRs)
+# Architecture Decision Records
 
-This document tracks foundational architectural decisions, technical trade-offs, and design rationale across the lifecycle of the Biometric & Cryptographic Attendance Verification Platform.
+Short records of the main design decisions: what the problem was, what I chose, and what it costs.
 
----
-
-## Index of Records
-
-* [ADR-001: Hybrid MTCNN Cascaded CNN Detection + CSRT Correlation Tracking](#adr-001-hybrid-mtcnn-cascaded-cnn-detection--csrt-correlation-tracking)
-* [ADR-002: Single-Instruction BLAS Matrix Dot Product for Biometric Search](#adr-002-single-instruction-blas-matrix-dot-product-for-biometric-search)
-* [ADR-003: Dual-Channel Authentication (Stateless JWT Bearer + Session Cookie)](#adr-003-dual-channel-authentication-stateless-jwt-bearer--session-cookie)
-* [ADR-004: Dynamic Cryptographic HMAC-SHA256 QR Tokens vs Static QR Codes](#adr-004-dynamic-cryptographic-hmac-sha256-qr-tokens-vs-static-qr-codes)
-* [ADR-005: Resilient Two-Tier Cache Architecture (Distributed Redis + Memory Fallback)](#adr-005-resilient-two-tier-cache-architecture-distributed-redis--memory-fallback)
+- [ADR-001: Detect faces on keyframes, track them in between](#adr-001-detect-faces-on-keyframes-track-them-in-between)
+- [ADR-002: Match embeddings with a single matrix-vector product](#adr-002-match-embeddings-with-a-single-matrix-vector-product)
+- [ADR-003: Accept both session cookies and JWTs](#adr-003-accept-both-session-cookies-and-jwts)
+- [ADR-004: Rotating signed QR codes instead of a static code](#adr-004-rotating-signed-qr-codes-instead-of-a-static-code)
+- [ADR-005: Redis is optional, with an in-memory fallback](#adr-005-redis-is-optional-with-an-in-memory-fallback)
 
 ---
 
-## ADR-001: Hybrid MTCNN Cascaded CNN Detection + CSRT Correlation Tracking
+## ADR-001: Detect faces on keyframes, track them in between
 
-### Status
-**Accepted**
+**Status:** Accepted
 
 ### Context
-Running deep multi-task cascaded convolutional neural networks (P-Net, R-Net, O-Net) plus an embedding network on every incoming video frame is the most expensive work in the system. On commodity x86_64 cloud containers lacking dedicated GPUs, doing it per frame limits the kiosk to a low frame rate with visible bounding-box lag.
+
+Running MTCNN detection and a FaceNet forward pass on every frame is the most expensive thing the app does. On a CPU-only server, doing that per frame makes the kiosk slow and the boxes visibly lag behind the faces.
 
 ### Decision
-Decouple face localization from identity recognition by implementing a 1:4 periodic detection schedule paired with continuous object tracking:
-1. **Periodic Keyframe Detection:** Run MTCNN only once every 4 frames (or whenever the active tracker list drops to zero).
-2. **Inter-Frame Correlation Tracking:** Between MTCNN passes, hand off detected coordinates to OpenCV Channel and Spatial Reliability Trackers (`cv2.TrackerCSRT` or legacy KCF fallback). A tracker update is far cheaper than detection plus embedding, so most frames skip the neural networks entirely.
-3. **Multi-Camera Isolation:** Scope tracker instances and frame counts to a client-generated ID (`client_id`) stored in a lock-guarded, per-process in-memory session registry with a 120-second inactivity TTL.
+
+- Run MTCNN and FaceNet only on every 4th frame per kiosk, or whenever no face is being tracked.
+- On the frames in between, move the boxes with OpenCV CSRT trackers (KCF if CSRT isn't available). A tracker update is much cheaper than detection plus embedding.
+- Keep tracker state per kiosk, keyed by a `client_id` the browser generates, in a lock-protected in-memory registry that drops idle kiosks after 120 seconds.
 
 ### Consequences
-* **Positive:** Neural-network cost is paid on roughly one frame in four instead of every frame, without a GPU. (The per-stage timings have not been benchmarked in this repository; see `docs/BENCHMARKS.md`.)
-* **Positive:** Prevents tracker state leakage across concurrent browser terminals.
-* **Negative:** Rapid lateral head acceleration exceeding the CSRT search window between keyframes can cause transient bounding box displacement for up to 3 frames before MTCNN re-acquires.
 
-### Alternatives Considered
-* *MTCNN on Every Frame:* Rejected because it multiplies the CPU cost of the most expensive stage by four.
-* *Haar Cascades:* Rejected because they are known to produce more false positives and miss angled faces under varied classroom lighting.
-* *MediaPipe Face Mesh:* Viable alternative; FaceNet/MTCNN was preferred for tighter integration with the PyTorch VGGFace2 embedding pipeline.
+- The neural networks run on roughly one frame in four, with no GPU needed.
+- Two kiosks never share or overwrite each other's trackers.
+- If a head moves quickly, a box can drift for a few frames until the next keyframe corrects it.
+- Tracker state is per process. With several pods, a kiosk should stick to one pod; otherwise its trackers are rebuilt on the next keyframe.
+
+### Alternatives considered
+
+- **Detection on every frame:** roughly four times the CPU cost of the most expensive step.
+- **Haar cascades:** cheaper, but more false positives and worse with angled faces and uneven classroom lighting.
+- **MediaPipe:** a reasonable option. MTCNN was chosen because it ships with facenet-pytorch, next to the VGGFace2 FaceNet model used for embeddings.
 
 ---
 
-## ADR-002: Single-Instruction BLAS Matrix Dot Product for Biometric Search
+## ADR-002: Match embeddings with a single matrix-vector product
 
-### Status
-**Accepted**
+**Status:** Accepted
 
 ### Context
-Matching a 512-dimensional query embedding vector against an enrolled population of $N$ students requires computing similarity scores across the vector space. Iterating through database records with Python-level `for` loops and computing pairwise cosine similarities takes $O(N \cdot d)$ time with interpreter overhead per student (measured: 0.85 ms for $N = 1,000$ and 10.3 ms for $N = 10,000$ with one `np.dot` per student).
+
+Each detected face has to be compared against every enrolled student. Looping over students in Python and computing a cosine similarity for each costs about 0.85 ms at 1,000 students and 10 ms at 10,000, and that runs for every face on every keyframe.
 
 ### Decision
-Enforce unit $L_2$-norm normalization at embedding generation time:
-$$\|\mathbf{q}\|_2 = 1.0, \quad \|\mathbf{e}_i\|_2 = 1.0$$
-Because cosine similarity between two unit vectors reduces strictly to their scalar dot product:
-$$\text{CosineSim}(\mathbf{q}, \mathbf{e}_i) = \frac{\mathbf{q} \cdot \mathbf{e}_i}{\|\mathbf{q}\|_2 \|\mathbf{e}_i\|_2} = \mathbf{q} \cdot \mathbf{e}_i$$
-The entire enrolled student vector base is stacked into a contiguous 2D float32 matrix $\mathbf{E} \in \mathbb{R}^{N \times 512}$. Query matching executes via a single C-level BLAS matrix-vector product (`np.dot(matrix, query)`), returning similarity scores across all $N$ profiles simultaneously.
+
+Scale every embedding to unit length when it's created. For unit vectors, cosine similarity equals the dot product, so the enrolled embeddings can be stacked into one `N x 512` float32 matrix and scored with a single `matrix @ query`. The best score is a match if it's at least `FACE_MATCH_THRESHOLD`.
 
 ### Consequences
-* **Positive:** Measured single-threaded: 0.06 ms for 1,000 profiles and 0.92 ms for 10,000 (about 11–14x faster than the per-student loop); see `docs/BENCHMARKS.md`.
-* **Positive:** The stacked matrix is cached per process (`get_face_profiles()`), so keyframes make no database query. Enrollment invalidates the cache in its own process; other workers/pods refresh within 30 seconds.
-* **Negative:** Requires holding normalized vectors in application memory: $50,000 \times 512 \times 4 \text{ bytes} \approx 98 \text{ MiB}$ per process.
 
-### Alternatives Considered
-* *Iterative Python Cosine Loops:* Rejected due to $O(N)$ interpreter overhead and GIL lock contention.
-* *PostgreSQL pgvector HNSW Index:* Not adopted. Embeddings are stored as JSON text in `students.embedding` and matched in memory; Docker Compose runs plain `postgres:16`.
+- Matching takes 0.06 ms at 1,000 students and 0.92 ms at 10,000 on one core, 11 to 14 times faster than the loop (see [BENCHMARKS.md](BENCHMARKS.md)).
+- The stacked matrix is cached per process, so keyframes don't hit the database. An enrollment clears the cache in its own process; other processes pick up the change within 30 seconds.
+- The matrix lives in memory: about 98 MB per process at 50,000 students.
+
+### Alternatives considered
+
+- **Per-student Python loop:** the interpreter overhead grows with every student.
+- **pgvector with an HNSW index:** would scale further, but adds a PostgreSQL extension and approximate search that a classroom-sized roster doesn't need. Embeddings are stored as JSON text and matched in memory.
 
 ---
 
-## ADR-003: Dual-Channel Authentication (Stateless JWT Bearer + Session Cookie)
+## ADR-003: Accept both session cookies and JWTs
 
-### Status
-**Accepted**
+**Status:** Accepted
 
 ### Context
-The platform serves two fundamentally distinct client archetypes:
-1. **Interactive Web Portal:** Administrative users operating desktop dashboards requiring browser session security, CSRF protection, and HttpOnly cookies.
-2. **Headless / Mobile Terminals:** Kiosk IoT hardware, automated export scripts, and student smartphones submitting check-ins requiring stateless, header-based bearer authentication without cross-site cookie requirements.
+
+There are two kinds of clients. Admins use the browser UI, where an `HttpOnly` cookie is the safer choice. Scripts and API clients (CSV exports, curl, Postman) are easier to write against a bearer token.
 
 ### Decision
-Implement a hybrid authentication resolver (`@admin_required` decorator) evaluating credentials in prioritized sequence:
-1. **Priority 1 (Stateless API):** Inspect `Authorization: Bearer <token>` header. Validate HMAC-SHA256 cryptographic signature and expiry claim (`exp`) using stateless JWT. If valid, allow the request without consulting the session.
-2. **Priority 2 (Web Portal):** Inspect cryptographically signed Flask session cookie. Validate authenticated admin email.
-3. **Failure:** A browser navigation (preferred `Accept: text/html`) is redirected to the login page (`/`); every other caller gets `401 Unauthorized` with a JSON body. Admin HTML pages are additionally redirected by a `before_app_request` hook.
+
+A single `@admin_required` decorator checks, in order:
+
+1. An `Authorization: Bearer <token>` header with a valid HS256 JWT.
+2. Otherwise, the signed Flask session cookie.
+3. Otherwise, a browser loading a page is redirected to the login page, and every other caller gets a `401` with a JSON body.
 
 ### Consequences
-* **Positive:** Unified access-control policy across human browser interactions and programmatic REST clients.
-* **Positive:** Microservice-ready; downstream microservices can validate the self-contained JWT token without querying a central session database.
-* **Negative:** Tokens cannot be revoked before their 24-hour expiration; a revocation list (e.g. in Redis) is not implemented.
+
+- One access-control rule covers both the UI and the API.
+- A JWT can be verified without any server-side lookup.
+- JWTs can't be revoked: a leaked token is valid until it expires (24 hours), including after logout. A revocation list in Redis would fix this but isn't implemented.
 
 ---
 
-## ADR-004: Dynamic Cryptographic HMAC-SHA256 QR Tokens vs Static QR Codes
+## ADR-004: Rotating signed QR codes instead of a static code
 
-### Status
-**Accepted**
+**Status:** Accepted
 
 ### Context
-Static QR codes displayed on classroom podiums or projection screens are susceptible to proxy attendance: students in attendance take a smartphone photograph of the QR code and forward it to absent peers via messaging platforms (WhatsApp/Telegram), enabling remote fraudulent check-ins.
+
+A static QR code on the classroom screen is easy to abuse: a student in the room takes a photo and sends it to friends who aren't there.
 
 ### Decision
-Implement dynamic, time-bound rotating QR codes with cryptographic signature verification:
-1. **Token Composition:** The server generates a payload comprising a unique 12-character cryptographic nonce and Unix timestamp:
-   $$\text{Payload} = \{\text{nonce}: \text{UUID4}_{[:12]}, \text{created\_at}: \text{EpochTime}\}$$
-2. **Cryptographic Signing:** Payload is serialized and signed using `URLSafeTimedSerializer` with master `SECRET_KEY`, salt `qr-attendance-token` and an explicit HMAC-SHA256 digest. The server also renders the check-in URL as the QR image (`segno`), so tokens are never sent to an external QR service.
-3. **Rotation & TTL:** Kiosk UI refreshes the QR code every 5 seconds and advertises a 15-second validity. The server accepts tokens up to 30 seconds old at `/verify_qr_token` and up to 35 seconds old for the student lookup and `/mark_attendance`, to absorb cellular latency and typing time.
-4. **Idempotent Ledger:** `/mark_attendance` checks for an existing `(roll, IST date)` record before inserting (application-level check; there is no database unique constraint).
+
+- The server issues a token containing a random nonce and a timestamp, signed by itsdangerous (`URLSafeTimedSerializer`) with HMAC-SHA256, the app's `SECRET_KEY` and a fixed salt.
+- The classroom screen fetches a new token every 5 seconds. The server renders the check-in URL as the QR image itself (segno), so tokens are never sent to an outside QR service.
+- Tokens are accepted up to 30 seconds old when scanned and up to 35 seconds old for the lookup and check-in, to allow for slow mobile connections and typing.
+- `/mark_attendance` skips the insert if the student already has a record for that IST date.
 
 ### Consequences
-* **Positive:** Shrinks remote photo-forwarding attacks to a ~35-second window; older forwarded QR images are rejected.
-* **Negative:** Because the whole class scans the same rotating code, a token cannot be single-use; anyone holding a fresh token can submit any registered roll number within the window.
-* **Positive:** Token verification is stateless: an HMAC check and a timestamp comparison, with no database access.
-* **Negative:** Requires dynamic classroom display (monitor/tablet) connected to the kiosk server.
+
+- A forwarded photo of the code stops working within about 35 seconds.
+- Verifying a token is an HMAC check and a timestamp comparison, with no database access.
+- Because the whole class scans the same code, tokens can't be single-use. Anyone with a fresh token can submit any roll number inside that window.
+- It needs a screen in the classroom that can show the rotating code.
 
 ---
 
-## ADR-005: Resilient Two-Tier Cache Architecture (Distributed Redis + Memory Fallback)
+## ADR-005: Redis is optional, with an in-memory fallback
 
-### Status
-**Accepted**
+**Status:** Accepted
 
 ### Context
-The application uses a shared cache for brute-force login lockout counters (3 failed attempts $\rightarrow$ 15-minute lockout) so the limit holds across Gunicorn workers and pods. In containerized environments or developer local setups, an external Redis service may experience network partitions, configuration errors, or cold restarts. A hard dependency on Redis would cause total application downtime during cache outages.
+
+Login lockout (3 failures, then 15 minutes) only works across several Gunicorn workers or pods if the counters are shared, which is what Redis is for. But making Redis a hard dependency would mean a Redis outage takes down logins too, and it makes local setup heavier.
 
 ### Decision
-Implement `SafeCacheStore` encapsulation wrapping `redis.from_url` with automatic fallback to an in-memory dictionary store featuring timestamp-based TTL eviction:
-1. On initialization, test Redis connectivity with a 1-second timeout `socket_connect_timeout=1`.
-2. If Redis is reachable, operations (`set`, `get`, `delete`) execute against the distributed cluster.
-3. If Redis raises an exception or is offline, the store sets `_redis_available = False` and routes operations to `_memory_cache` with expiry checking (`time.time() > exp`).
-4. While degraded, Redis is re-probed with `PING` at most every 30 seconds; once it answers, operations move back to Redis (values written to memory during the outage are not migrated).
+
+`SafeCacheStore` wraps the Redis client:
+
+1. At startup it tries to connect with a 1-second timeout.
+2. If Redis is reachable, `get`, `set` and `delete` go to Redis.
+3. If Redis is unreachable or a call fails, it switches to an in-memory dictionary with expiry timestamps.
+4. While degraded, it pings Redis at most every 30 seconds and switches back once Redis answers. Counters written to memory in the meantime aren't copied over.
 
 ### Consequences
-* **Positive:** Zero service downtime if Redis fails; core authentication, rate limiting, and attendance verification continue functioning transparently.
-* **Positive:** Frictionless local developer onboarding without mandatory Redis installation.
-* **Negative:** During Redis outages in multi-replica deployments, brute-force attempt counters and in-memory caches are scoped per pod rather than shared across the cluster.
+
+- Logins and attendance keep working if Redis goes down.
+- Local development doesn't need Redis.
+- During an outage, or with no Redis configured, each process counts failed logins on its own, so the lockout is less strict.

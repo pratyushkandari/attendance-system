@@ -1,18 +1,18 @@
 # ==============================================================================
-# Attendance System - Engineering Automation Makefile
+# VisionAttend - common development tasks
 # ==============================================================================
 
 .PHONY: help install run test coverage lint clean docker-build docker-up docker-down k8s-apply k8s-delete
 
 help:
 	@echo "Available commands:"
-	@echo "  make install       Install project dependencies into virtual environment"
+	@echo "  make install       Install dependencies (CPU PyTorch + dev requirements)"
 	@echo "  make run           Run application locally with Gunicorn (or Flask dev)"
 	@echo "  make test          Run the automated pytest suite"
 	@echo "  make coverage      Run pytest with terminal code coverage report"
-	@echo "  make lint          Run ruff and bandit security analysis"
+	@echo "  make lint          Run ruff and bandit"
 	@echo "  make clean         Remove build, cache, and bytecode artifacts"
-	@echo "  make docker-build  Build production multi-stage Docker micro-container"
+	@echo "  make docker-build  Build the Docker image"
 	@echo "  make docker-up     Start full stack (App + PostgreSQL + Redis + Prometheus)"
 	@echo "  make docker-down   Stop and tear down Docker stack"
 	@echo "  make k8s-apply     Deploy manifests to Kubernetes cluster"

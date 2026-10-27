@@ -1,193 +1,113 @@
-# System Architecture & Technical Design Document (RFC-042)
+# Architecture
 
-**System:** VisionAttend - Enterprise Biometric & Dual-Channel Cryptographic Attendance Platform  
-**Author:** Pratyush Kandari  
-**Last Revised:** October 2026 (v2.5.0)  
+How VisionAttend is put together. Setup instructions are in the [README](README.md), and the reasoning behind the main design choices is in [docs/ARCHITECTURE_DECISION_RECORDS.md](docs/ARCHITECTURE_DECISION_RECORDS.md).
 
----
-
-## 1. Executive Summary & Problem Space
-
-Institutional attendance recording at scale suffers from two distinct systemic vulnerabilities:
-1. **Inference Latency in Computer Vision Pipelines:** Running cascaded deep-learning face detection (MTCNN) and an embedding network on every video frame is expensive on CPU-only servers, so a naive pipeline gives a slow, jittery kiosk.
-2. **Proxy Attendance in QR-Based Tracking:** Static QR codes posted in lecture halls are photographed and shared via messaging apps, enabling students to check in remotely.
-
-This platform addresses both through:
-* **Periodic Detection + CSRT Tracking:** MTCNN and FaceNet run on every 4th frame per kiosk (or when nothing is tracked); OpenCV CSRT trackers move the boxes on the frames in between.
-* **Matrix Similarity Search:** Normalized 512-D face embeddings are kept as one cached `(N, 512)` matrix per process and matched with a single `np.dot(matrix, query_vector)` (about 0.06 ms for 1,000 students single-threaded; see [docs/BENCHMARKS.md](docs/BENCHMARKS.md)).
-* **Presentation Attack Detection (PAD):** Client-side eye-region contrast-variance tracking requires each recognised face to blink before it is marked, defeating static printed-photo attacks (video replays of a blinking face are not detected; see §3.2).
-* **Dynamic Time-Bound QR Tokens:** Server-generated HMAC-SHA256 signed tokens rotate every 5 seconds and are accepted for at most 30–35 seconds, shrinking the window in which a forwarded photograph is usable.
-
----
-
-## 2. High-Level Architecture & End-to-End Topology
+## Overview
 
 ```
-                              HIGH-LEVEL DATA FLOW
-  ┌─────────────────────────────────────────────────────────────────────────────────┐
-  │                                                                                 │
-  │  [Webcam Kiosk Client]               [Mobile QR Client / REST API Clients]      │
-  │        │                                      │                                 │
-  │        ▼                                      ▼ (Bearer JWT / Dynamic QR)       │
-  │  ┌───────────────┐                      ┌───────────────┐                       │
-  │  │ CSRT Tracker  │                      │ HMAC Validator│                       │
-  │  │ + Blink Check │                      │ + JWT Decoder │                       │
-  │  └───────┬───────┘                      └───────┬───────┘                       │
-  │          │ (1 in 4 Keyframes)                   │                               │
-  │          ▼                                      ▼                               │
-  │  ┌──────────────────────────────────────────────────────┐                       │
-  │  │              Flask REST Gateway & Metrics            │                       │
-  │  │      (Hybrid JWT Bearer + Signed Session Auth)       │                       │
-  │  └──────────────────────────┬───────────────────────────┘                       │
-  │                             │                                                   │
-  │           ┌─────────────────┴─────────────────┐                                 │
-  │           ▼                                   ▼                                 │
-  │  ┌─────────────────┐                 ┌─────────────────┐                        │
-  │  │ InceptionResnet │                 │ PostgreSQL 16   │                        │
-  │  │ BLAS Match vs   │                 │ (B-Tree indexes)│                        │
-  │  │ cached matrix   │                 └─────────────────┘                        │
-  │  └─────────────────┘                          ▲                                 │
-  │           │                                   │                                 │
-  │           ▼                                   ▼                                 │
-  │  ┌─────────────────┐                 ┌─────────────────┐                        │
-  │  │ Redis 7 Cache   │                 │ Prometheus /    │                        │
-  │  │ Lockout Counters│                 │ Grafana Telemetry                        │
-  │  └─────────────────┘                 └─────────────────┘                        │
-  │                                                                                 │
-  └─────────────────────────────────────────────────────────────────────────────────┘
+ Admin browser (kiosk)          Admin browser (classroom screen)       Student phone
+  webcam -> JPEG frames           polls every 5 s                       scans QR -> /qr_mobile
+  blink check per face            shows server-rendered QR              roll number -> confirm
+        |                                 |                                    |
+        v                                 v                                    v
+ +--------------------------------- Flask app (run.py -> Gunicorn) ---------------------------------+
+ | routes/main.py        auth (session or JWT), lockout, QR token issue/verify, HTML pages          |
+ | routes/student.py     enrollment, face capture, embedding save, QR-gated student lookup          |
+ | routes/attendance.py  recognition and tracking, mark attendance, records, CSV export, dashboard  |
+ | ai/facenet_model.py   lazily loaded MTCNN + FaceNet     ai/comparator.py   embedding matching    |
+ | metrics.py            request counters and latency, /metrics                                     |
+ +----------------+------------------------------------------+--------------------------------------+
+                  v                                          v
+     PostgreSQL (SQLite in tests)                Redis (optional) or in-process store
+     admins, students, attendance                failed-login counters
 ```
 
----
+The app is a single Flask service. It serves the admin pages and the JSON API, runs face detection and recognition in-process on the CPU, stores everything in PostgreSQL, and can use Redis for login-lockout counters.
 
-## 3. Subsystem Specifications
+| Module | Responsibility |
+| --- | --- |
+| `app/__init__.py` | App factory: loads config, checks `SECRET_KEY`, registers blueprints and metrics, creates tables |
+| `app/routes/main.py` | Login, sessions and JWTs, lockout, QR token issue and verification, page routes |
+| `app/routes/student.py` | Student registration, face capture, saving embeddings, QR-gated student lookup |
+| `app/routes/attendance.py` | Recognition and tracking, marking attendance, records, CSV export, dashboard data |
+| `app/ai/facenet_model.py` | MTCNN and InceptionResnetV1 (VGGFace2 weights), loaded on first use |
+| `app/ai/comparator.py` | Scores a query embedding against the matrix of enrolled embeddings |
+| `app/extensions.py` | SQLAlchemy and `SafeCacheStore` (Redis with an in-memory fallback) |
+| `app/metrics.py` | Prometheus counters, histograms and gauges |
 
-### 3.1 Biometric Inference Pipeline
+## Data model
+
+- **admins**: email and scrypt password hash.
+- **students**: roll number, name, department, year, email, and the face embedding (512 floats stored as JSON text).
+- **attendance**: roll number, method (`Face` or `QR`) and timestamp. Timestamps are stored as naive datetimes in IST.
+
+Tables are created with `db.create_all()` at startup. `seed.sql` creates the same schema for PostgreSQL along with demo data.
+
+## Enrollment
+
+1. The admin fills in the student form (`POST /register`). The server validates it and assigns the next roll number for that year and department, e.g. `2026CSE001`.
+2. The capture page takes five webcam frames and sends each one to `POST /capture_face`, which returns the embedding of the largest face in the frame. Frames without a usable face are skipped.
+3. `POST /save_face_data` averages the five embeddings, scales the result to unit length and stores it. It also clears the recognition cache so the student can be recognised right away.
+
+## Face check-in
+
+The kiosk page sends a 380 px wide JPEG to `POST /recognize_with_box`, waits for the response, then sends the next frame. Each browser tab has its own `client_id` so the server can keep separate tracker state per kiosk.
 
 ```
-JPEG Frame from Browser (380 px wide, data URL)
-      │
-      ▼
-[decode_image_payload: base64 + cv2.imdecode] ──► invalid → JSON error, loop continues
-      │
-      ▼
-Luminance Check (mean < 35 triggers low-light alert)
-      │
-      ├── If (frame_count % 4 == 0) OR (trackers is empty):
-      │       │
-      │       ▼
-      │   [MTCNN Cascaded CNN] (P-Net ➔ R-Net ➔ O-Net, conf >= MTCNN_CONFIDENCE_THRESHOLD, default 0.90)
-      │       │
-      │       ▼
-      │   Crop Face Region [y:y+h, x:x+w]
-      │       │
-      │       ▼
-      │   Resize to (160, 160) & Normalize [-1.0, 1.0]
-      │       │
-      │       ▼
-      │   [InceptionResnetV1 Forward Pass] (Zero-Grad, CPU thread pool)
-      │       │
-      │       ▼
-      │   L2-Unit Normalization (||v|| = 1.0)
-      │       │
-      │       ▼
-      │   [BLAS Matrix Dot Product Search] (scores = cached matrix · query)
-      │       │
-      │       ▼
-      │   Initialize new cv2.TrackerCSRT instances
-      │
-      └── Every frame (including keyframes):
-              │
-              ▼
-          Update CSRT trackers; drop lost or tiny boxes
-              │
-              ▼
-          Return boxes (frame coordinates) + identity labels; the browser smooths
-          them and maps them through the video's object-fit: cover crop
+frame
+  -> decode; if mean brightness < 35, tell the operator to switch to QR
+  -> keyframe? (every 4th frame for this kiosk, or no face is being tracked)
+       yes: MTCNN detection -> crop each face, resize to 160x160
+            -> FaceNet embedding -> score against all enrolled students
+            -> start one CSRT tracker per face
+       no:  update the existing CSRT trackers
+  -> return boxes, roll numbers and scores
 ```
 
-The profile matrix comes from `get_face_profiles()`, which caches the stacked embeddings per process. `/save_face_data` invalidates the cache in the process that handled the enrollment; other workers and pods rebuild theirs when it is older than 30 seconds. Reloading and parsing every JSON embedding on each keyframe, as earlier versions did, took ~350 ms at 1,000 students.
+Detection and embedding are by far the most expensive steps, so they only run on keyframes. In between, the CSRT trackers keep the boxes on the faces. Boxes are returned in frame coordinates and the browser maps them onto the video element, accounting for the `object-fit: cover` crop.
 
-#### Vector Search Formulation:
-Given an enrolled cohort matrix $\mathbf{E} \in \mathbb{R}^{N \times 512}$ where each row $\|\mathbf{e}_i\|_2 = 1.0$, and a normalized query vector $\mathbf{q} \in \mathbb{R}^{512}$ with $\|\mathbf{q}\|_2 = 1.0$:
-$$\text{Sim}(\mathbf{E}, \mathbf{q}) = \mathbf{E} \cdot \mathbf{q} = \begin{bmatrix} \mathbf{e}_1 \cdot \mathbf{q} \\ \mathbf{e}_2 \cdot \mathbf{q} \\ \vdots \\ \mathbf{e}_N \cdot \mathbf{q} \end{bmatrix}$$
-$$\text{BestMatchIndex} = \arg\max_{i} (\text{Sim}(\mathbf{E}, \mathbf{q})_i), \quad \text{Confidence} = \max_i (\text{Sim}(\mathbf{E}, \mathbf{q})_i)$$
-Match is accepted if and only if $\text{Confidence} \ge$ `FACE_MATCH_THRESHOLD` (default $0.70$). Stored vectors that are not 512-D are skipped when the matrix is built, and `/save_face_data` rejects malformed samples.
+### Matching
 
----
+Every embedding is scaled to unit length, so cosine similarity is just a dot product. The enrolled embeddings are stacked into an `N x 512` float32 matrix, and `matrix @ query` gives every student's score in one call. The best score counts as a match if it's at least `FACE_MATCH_THRESHOLD` (0.70 by default).
 
-### 3.2 Anti-Spoofing & Liveness Detection (PAD)
+Building that matrix means loading and parsing every stored embedding, which is slow, so it's cached per process. The cache is rebuilt after 30 seconds, or straight away when an enrollment is saved in the same process. Timings are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
-To prevent presentation attacks using 2D printed photographs, the browser viewfinder tracks grey-level contrast variance over the ocular band of every recognised face (state is kept per roll number):
+### Blink check
 
-$$\text{Eye Band Region}: \quad \mathcal{R}_{\text{eye}} = [x + 0.12w, \; y + 0.18h, \; 0.76w, \; 0.28h]$$
+For each recognised face, the browser measures the contrast of a band across the eyes (from 18% to 46% of the face box height, 76% of its width). A blink shows up as a short dip: contrast falls below 88% of the recent average and recovers above 92% within 40 to 1200 ms. The kiosk calls `POST /mark_attendance` for a face only after it has seen that face blink. If a face leaves the frame for more than 1.5 seconds, it has to blink again.
 
-$$\text{Variance}: \quad \sigma^2 = \frac{1}{|\mathcal{R}|} \sum_{(u,v) \in \mathcal{R}} (I(u,v) - \mu)^2$$
+This check runs in the browser. The server only requires that `Face` check-ins come from a signed-in admin, so it can't tell whether a blink actually happened. A video of a blinking student played on a phone will pass.
 
-* **Blink State Machine:**
-  1. A natural blink causes an abrupt drop in ocular contrast variance ($\sigma^2 < 0.88 \cdot \bar{\sigma}^2_{\text{rolling}}$).
-  2. As the eyelid reopens, variance recovers back above $0.92 \cdot \bar{\sigma}^2_{\text{rolling}}$.
-  3. If duration $\Delta t \in [40\text{ms}, 1200\text{ms}]$, an active blink is registered.
-  4. The kiosk calls `/mark_attendance` for a face only after that face's own blink has been registered. There is no time-based or frame-count bypass, and a face that leaves the frame for >1.5 s must blink again.
-  5. **Trust boundary:** this check runs in the kiosk browser. The server enforces only that `Face` check-ins come from an authenticated admin/kiosk session; it cannot verify that a blink happened. A replayed video of a blinking student is not detected.
+## QR check-in
 
----
+1. The classroom screen calls `GET /generate_qr_token` every 5 seconds. The server creates a token (a random nonce and a timestamp, signed by itsdangerous with HMAC-SHA256 and the app's `SECRET_KEY`), builds the `/qr_mobile?token=...` URL and returns it as an SVG QR code generated with segno.
+2. The student's phone opens that URL. The page checks the token with `POST /verify_qr_token` (accepted up to 30 seconds old), then looks up the roll number the student types with `POST /verify_student` and `GET /get_student/<roll>`. Both lookups require the token, so nobody can walk through roll numbers to collect student names.
+3. Confirming sends `POST /mark_attendance` with `method: "QR"` and the token (accepted up to 35 seconds old, to leave time for typing).
 
-### 3.3 Dynamic Cryptographic QR Infrastructure
+The whole class scans the same code, so a token can't be single-use. Its job is to make a forwarded photo of the code useless after about 35 seconds.
 
-* **Payload Construction:**
-  $$\mathcal{P} = \{\text{"nonce"}: \text{UUID4}_{[:12]}, \; \text{"created\_at"}: t_{\text{epoch}}\}$$
-* **Serialization & Signature:** Signed using `URLSafeTimedSerializer` with master `SECRET_KEY`, salt `qr-attendance-token` and an explicit HMAC-SHA256 digest (itsdangerous would otherwise use HMAC-SHA1).
-* **Rendering:** `/generate_qr_token` builds the absolute `/qr_mobile?token=…` URL and returns it as an SVG QR code rendered with `segno`, so live tokens never leave the server. `ProxyFix` trusts one `X-Forwarded-Proto` hop so the URL uses `https` behind Render or an ingress.
-* **Verification Window:** The kiosk refreshes the code every 5 seconds and the API advertises a 15-second validity. `/verify_qr_token` accepts tokens up to 30 seconds old; `/verify_student`, `/get_student` and `/mark_attendance` accept up to 35 seconds so a student can type their roll number and confirm. Within that window a token can be reused (the whole class scans the same code), so it limits but does not eliminate forwarding.
-* **Phone-side lookups:** `/verify_student` and `/get_student` require the live QR token (or admin credentials), so sequential roll numbers cannot be used to scrape student names.
-* **One record per day:** `/mark_attendance` checks for an existing `(roll, IST date)` record before inserting. This is an application-level check, not a database constraint, so two truly simultaneous requests for the same roll could both insert; `/records` de-duplicates per day when displaying.
+The app wraps Werkzeug's `ProxyFix` around the WSGI app and trusts one `X-Forwarded-Proto` hop, so the check-in URL uses `https` behind Render's proxy or a Kubernetes ingress.
 
----
+## Authentication
 
-### 3.4 Concurrency & Memory Model
+- `POST /login_admin` checks the password against its scrypt hash. Unknown emails are checked against a dummy hash, so a failed login takes the same time whether or not the email exists.
+- A successful login sets a signed session cookie (`HttpOnly`, `SameSite=Lax`) and returns a 24-hour HS256 JWT.
+- The `@admin_required` decorator accepts a Bearer token first, then the session. API callers without valid credentials get a JSON `401`; a browser loading an admin page is redirected to the login page.
+- Failed logins are counted per email in `SafeCacheStore`. After 3 failures the email is locked for 15 minutes, and a successful login resets the count.
+- Anyone can create the first admin from the login page. After that, only a signed-in admin can create more, unless `ALLOW_PUBLIC_ADMIN_SIGNUP=true`.
 
-To prevent memory leaks and thread contention under multi-camera kiosk loads:
-* **PyTorch CPU Thread Limitation:** Explicitly configured with `torch.set_num_threads(1)` to prevent OpenMP worker thrashing across Gunicorn threads.
-* **Tracker Garbage Collection:** Client tracking states stored in `tracking_sessions` undergo automatic sweep eviction if idle for $>120$ seconds. The registry is guarded by a lock because Gunicorn serves requests from several threads, and it is per process: with several workers or pods a kiosk's frames may land on a process that simply re-detects on the next frame.
-* **Lazy Model Loading:** MTCNN and InceptionResnetV1 are built on first use under a lock, so concurrent first requests do not load duplicate model copies.
-* **Database Connection Resilience:** Connection pooling configured with `pool_pre_ping=True` and `pool_recycle=280` to prevent stale connection drops on cloud databases (AWS RDS / Render).
-* **Request Limits:** `MAX_CONTENT_LENGTH` is 10 MB; larger bodies get a JSON `413` before they are buffered.
-* **Startup Checks & Logging:** `create_app` refuses to start with an empty `SECRET_KEY` or one published in this repository. `run.py` configures logging before importing the app so INFO lines (for example Redis status) are emitted.
+## Concurrency and runtime state
 
----
+- `run.py` starts Gunicorn with one worker and four threads. PyTorch is limited to one thread (`torch.set_num_threads(1)`) and the Docker image limits BLAS to one thread, so the request threads don't fight over CPU cores.
+- MTCNN and FaceNet are loaded on first use, under a lock, so two simultaneous first requests don't load the models twice.
+- Tracker state lives in process memory, keyed by `client_id`, protected by a lock and dropped after 120 seconds of inactivity. With several pods, a kiosk's frames should stick to one pod (session affinity). If they don't, the trackers are rebuilt on the next keyframe.
+- The database pool uses `pool_pre_ping` and recycles connections after 280 seconds, since hosted PostgreSQL providers close idle connections.
+- Request bodies larger than 10 MB are rejected with `413`.
+- `create_app` refuses to start if `SECRET_KEY` is empty or is a value that has been committed to this repository.
 
-## 4. Latency Budget (Design Targets)
+## Failure handling
 
-These are the targets the pipeline is designed around. Apart from matrix matching, they have **not** been measured; see [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for what has been measured and how.
-
-| Pipeline Phase | Target | Implementation Mechanism |
-| :--- | :---: | :--- |
-| **Canvas Frame Ingestion** | $< 15\text{ ms}$ | 380 px wide canvas JPEG at 0.60 quality |
-| **Keyframe MTCNN Pass** | amortised over 4 frames | 1-in-4 periodic execution, faces < 45 px discarded |
-| **CSRT Inter-Frame Tracking** | $< 10\text{ ms}$ per face | OpenCV C++ correlation filter |
-| **Tensor Embedding Forward** | $< 40\text{ ms}$ per face | Zero-grad inference on a (160, 160) crop |
-| **Matrix Search** | $< 1\text{ ms}$ for a class roster (measured: 0.06 ms at $N=1\text{k}$, 0.92 ms at $N=10\text{k}$) | Cached matrix, one BLAS matrix-vector product |
-| **Network RTT & Serialization** | $< 15\text{ ms}$ | Compact JSON response (boxes + labels only) |
-
-The kiosk sends the next frame only after the previous response, so its frame rate is 1 / round-trip time.
-
----
-
-## 5. Security & Threat Modeling (STRIDE)
-
-| Threat | Risk Profile | Defense Mechanism |
-| :--- | :--- | :--- |
-| **Spoofing (S)** | Presentation attack with printed student photo | Per-face ocular contrast blink verification in the kiosk browser |
-| **Tampering (T)** | Modifying roll ID in QR payload | Cryptographic HMAC-SHA256 signature calculated over payload |
-| **Repudiation (R)** | Student disputes attendance record | Timestamped record with check-in method (`Face`/`QR`); note that admins can purge all records |
-| **Information Disclosure (I)** | Unauthenticated scraping of student database | `@admin_required` Bearer JWT / Session filter; phone lookups require a live QR token |
-| **Denial of Service (D)** | Brute-force credential stuffing | Sliding-window lockout (3 attempts triggers 15-minute freeze) |
-| **Elevation of Privilege (E)** | Unauthorized administrator creation | Anonymous signup only for the first admin (bootstrap); later admins require an authenticated admin unless `ALLOW_PUBLIC_ADMIN_SIGNUP=true` |
-
----
-
-## 6. Disaster Recovery & Fallback Strategies
-
-1. **Sub-Optimal Lighting:** If mean grayscale luminance drops below 35, the kiosk displays an interactive warning banner providing a 1-click fallback to the dynamic QR terminal.
-2. **Camera Hardware Drop:** In the event of a webcam failure or permission denial, the kiosk cleanly catches the WebRTC exception and shows a prompt linking to the dynamic QR terminal.
-3. **Cache Partition:** If Redis encounters network partitions, the `SafeCacheStore` automatically falls back to an in-memory TTL dictionary (login lockout keeps working per process) and re-probes Redis every 30 seconds, switching back once it answers.
+- **Low light.** If a frame's mean brightness is below 35, the kiosk shows a banner with a link to the QR session.
+- **No camera.** If the browser can't open the webcam (no device, or permission denied), the kiosk offers the QR session instead.
+- **Redis down.** `SafeCacheStore` falls back to an in-memory store with expiry times and re-checks Redis every 30 seconds. Lockout keeps working, but per process.
+- **Bad input.** Images that can't be decoded get a `400` (or an error field in the kiosk response, so the kiosk keeps running) instead of a server error.

@@ -1,245 +1,233 @@
-# REST API Specification & Engineering Contract
+# API Reference
 
-**Service:** VisionAttend Core Attendance & Identity Gateway  
-**Protocol:** HTTP/1.1 & HTTP/2 over TLS  
-**Base URL:** `http://localhost:5000` (Dev) / `https://attendance-system-pratyush.onrender.com` (Prod)  
-**Specification Version:** v2.5.0  
+Base URL: `http://localhost:5000` locally, `https://attendance-system-pratyush.onrender.com` for the live demo.
 
----
+## Conventions
 
-## 1. Authentication & Security Headers
+**Authentication.** Admin endpoints accept either of these:
 
-The gateway implements a dual-mode access control model:
+- `Authorization: Bearer <token>`, using the token returned by `POST /login_admin`. Tokens are HS256 JWTs that expire after 24 hours, with the claims `sub` (admin email), `role`, `iat` and `exp`.
+- The session cookie set by `POST /login_admin` (`HttpOnly`, `SameSite=Lax`). This is what the browser UI uses.
 
-### 1.1 Stateless Bearer JWT Authentication (Mobile / CLI / Microservices)
-Include the token returned from `/login_admin` in the standard HTTP `Authorization` header:
-```http
-Authorization: Bearer <jwt_access_token>
+Without valid credentials, API clients get:
+
+```json
+{ "error": "Unauthorized. Bearer JWT token or Admin session required." }
 ```
-* **Algorithm:** HMAC-SHA256 (HS256)
-* **Default Token TTL:** 86,400 seconds (24 Hours)
-* **Claims Payload:** `sub` (Admin Email), `role` (`admin`), `iat` (Issued Timestamp), `exp` (Expiration Timestamp)
 
-### 1.2 Stateful Session Cookie (Web Dashboard)
-Browser clients accessing HTML views authenticate via cryptographically signed HTTP cookies:
-```http
-Cookie: session=<signed_flask_session_cookie>
+with status `401` (or a more specific message for an expired or invalid JWT). A browser loading an admin page (preferred `Accept` type `text/html`) is redirected to `/` instead.
+
+**Request bodies.** `POST` endpoints expect `Content-Type: application/json`. A missing or malformed body is treated as empty and gets the endpoint's normal `400` validation error. Bodies over 10 MB are rejected:
+
+```json
+{ "error": "Request body is too large." }
 ```
-Cookies include standard security flags: `HttpOnly`, `SameSite=Lax`, `Path=/`.
 
-### 1.3 Rate Limiting & Account Protection
-* **Lockout Window:** `LOCKOUT_THRESHOLD` (default 3) failed attempts against an email within `LOCKOUT_DURATION_SECONDS` (default 900) trigger a **temporary lockout** (`403 Forbidden`). Counters are stored in Redis when `REDIS_URL` is set (shared by all workers), otherwise in process memory.
-* **Lockout Reset:** A successful login clears the failed counter immediately.
+with status `413`.
 
-### 1.4 Request Bodies
-All `POST` endpoints expect `Content-Type: application/json`. A missing or malformed JSON body is treated as empty and answered with the endpoint's normal `400` JSON error. Bodies larger than 10 MB are rejected with `413 Request Entity Too Large`: `{"error": "Request body is too large."}`.
+**Lockout.** After `LOCKOUT_THRESHOLD` (default 3) failed logins for an email, that email is locked for `LOCKOUT_DURATION_SECONDS` (default 900). A successful login resets the counter.
 
-### 1.5 Unauthenticated Requests
-Admin endpoints answer API clients (fetch, curl, Postman: anything whose preferred `Accept` type is not `text/html`) with `401` and `{"error": "Unauthorized. Bearer JWT token or Admin session required."}`, or a more specific message for an expired or invalid JWT. A browser navigating to an admin URL (preferred `Accept: text/html`) is redirected to the login page (`302 Location: /`).
+**Time zone.** Dates and times in responses are Indian Standard Time (UTC+5:30).
 
 ---
 
-## 2. API Endpoints Catalog
+## Authentication
 
-### 2.1 Authentication & Operator Identity
+### `POST /login_admin`
 
-#### `POST /login_admin`
-Authenticates administrative credentials and issues a stateless 24-hour Bearer JWT token alongside session cookies.
+Signs an admin in. Returns a JWT and sets the session cookie.
 
-* **Request Body:**
+```json
+{ "email": "admin@institution.edu", "password": "AdminSecure@2026!" }
+```
+
+**200**
+
+```json
+{
+  "status": "success",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 86400,
+  "user": "admin@institution.edu"
+}
+```
+
+**Errors**
+
+- `400`: email or password missing.
+- `401`: wrong credentials. The response is the same, and takes the same time, whether or not the email exists.
   ```json
-  {
-    "email": "admin@institution.edu",
-    "password": "AdminSecure@2026!"
-  }
+  { "status": "invalid", "attempts_left": 2, "message": "Invalid credentials. 2 attempts left." }
   ```
-* **Success Response (`200 OK`):**
+- `403`: the email is locked.
   ```json
-  {
-    "status": "success",
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "token_type": "Bearer",
-    "expires_in": 86400,
-    "user": "admin@institution.edu"
-  }
+  { "status": "locked", "message": "Account locked due to 3 failed attempts. Try again in 15 minutes." }
   ```
-* **Error Responses:**
-  * `400 Bad Request`: Missing email or password payload.
-  * `401 Unauthorized`: Invalid credentials (unknown emails get the same response and take the same time, because the password is always checked against a hash). Returns remaining attempt count:
-    ```json
-    {
-      "status": "invalid",
-      "attempts_left": 2,
-      "message": "Invalid credentials. 2 attempts left."
-    }
-    ```
-  * `403 Forbidden`: Account temporarily locked out:
-    ```json
-    {
-      "status": "locked",
-      "message": "Account locked due to 3 failed attempts. Try again in 15 minutes."
-    }
-    ```
+
+### `POST /register_admin`
+
+Creates an admin account.
+
+**Access:** anyone, while no admin exists yet (so the first admin can sign up from the login page). After that, a signed-in admin. `ALLOW_PUBLIC_ADMIN_SIGNUP=true` opens it to everyone again.
+
+```json
+{ "email": "operator@institution.edu", "password": "AdminSecure@2026!" }
+```
+
+Password rules: 8 to 128 characters, at least one upper-case letter, one lower-case letter, one digit and one symbol. Common passwords and passwords containing the email's username are rejected.
+
+**200**
+
+```json
+{ "status": "registered", "message": "Admin registered successfully." }
+```
+
+**Errors**
+
+- `400` with `status` set to `weak_password`, `invalid_email` or `exists`, plus a `message`.
+- `403` with `status: "forbidden"` when signup is closed.
+
+### `GET /logout`
+
+Clears the session cookie and redirects to the login page. Issued JWTs stay valid until they expire.
 
 ---
 
-#### `POST /register_admin`
-Provisions a new administrator profile with password rules (below) and a salted scrypt hash.
+## Students and enrollment
 
-* **Access Control:**
-  * While **no administrator exists**, anyone may call it (initial bootstrap from the login page).
-  * Afterwards, the caller must be an authenticated admin (session cookie or Bearer JWT).
-  * `ALLOW_PUBLIC_ADMIN_SIGNUP=true` reopens anonymous signup (public demos only).
-* **Request Body:**
-  ```json
-  {
-    "email": "operator@institution.edu",
-    "password": "AdminSecure@2026!"
-  }
-  ```
-* **Password Validation Rules** (length limits follow NIST 800-63B; the composition rules are an institutional choice that NIST does not require):
-  * Minimum 8 characters, maximum 128 characters.
-  * At least one uppercase character (`A-Z`) and one lowercase character (`a-z`).
-  * At least one numeric digit (`0-9`).
-  * At least one special symbol (`!@#$%^&*...`).
-  * Rejects trivial passwords and email username substrings.
-* **Success Response (`200 OK`):**
-  ```json
-  {
-    "status": "registered",
-    "message": "Admin registered successfully."
-  }
-  ```
-* **Error Responses:**
-  * `400 Bad Request`: `{"status": "weak_password", "message": "Password must contain at least one special symbol."}`
-  * `400 Bad Request`: `{"status": "invalid_email", "message": "Email address format is invalid."}`
-  * `400 Bad Request`: `{"status": "exists", "message": "An administrator with this email already exists."}`
-  * `403 Forbidden`: `{"status": "forbidden", "message": "Administrator registration is closed. Ask an existing administrator to create your account."}`
+### `POST /register`
 
----
+Creates a student and assigns a roll number. **Access:** admin.
 
-### 2.2 Student Enrollment & Biometric Sampling
+```json
+{
+  "first_name": "Alexander",
+  "last_name": "Wright",
+  "department": "CSE",
+  "year": "2026",
+  "email": "a.wright@institution.edu"
+}
+```
 
-#### `POST /register`
-Enrolls student metadata into the PostgreSQL database and automatically computes an indexed, collision-resistant roll identifier.
+All fields are required. `year` must be four digits (string or number), `department` a 2 to 10 letter code (stored in upper case), names at most 100 characters and the email at most 120.
 
-* **Access Control:** Admin required (`Bearer JWT` or Session).
-* **Request Body:**
-  ```json
-  {
-    "first_name": "Alexander",
-    "last_name": "Wright",
-    "department": "CSE",
-    "year": "2026",
-    "email": "a.wright@institution.edu"
-  }
-  ```
-* **Validation:** all fields required; `year` must be 4 digits (string or number); `department` must be a 2–10 letter code (stored upper-case); names ≤ 100 characters; email ≤ 120 characters.
-* **Roll Generation Formula:**
-  $$\text{Roll} = \text{Year} + \text{Dept} + \text{PadZeroes}(\text{MaxSeq} + 1, 3) \quad \rightarrow \quad \text{2026CSE042}$$
-* **Success Response (`200 OK`):**
-  ```json
-  {
-    "status": "success",
-    "roll": "2026CSE042"
-  }
-  ```
-* **Error Responses:**
-  * `400 Bad Request`: Missing/invalid field (e.g. `{"error": "Year must be a 4-digit year (e.g. 2026)"}`) or invalid email format.
-  * `400 Bad Request`: Email already registered.
-  * `401 Unauthorized`: Missing or invalid Bearer token / session.
+The roll number is the year, the department and the next sequence number for that pair, padded to three digits: `2026CSE001`, `2026CSE002`, and so on.
 
----
+**200**
 
-#### `POST /capture_face`
-Processes a base64-encoded webcam frame, runs MTCNN face localization, filters sub-confidence detections, and extracts a normalized 512-D embedding tensor from the cropped face region.
+```json
+{ "status": "success", "roll": "2026CSE042" }
+```
 
-* **Access Control:** Admin required.
-* **Request Body:**
-  ```json
-  {
-    "image": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
-  }
-  ```
-* **Success Response (`200 OK`):**
-  ```json
-  {
-    "status": "success",
-    "embedding": [0.0381, -0.0192, ..., 0.0812],
-    "box": [142, 88, 185, 210]
-  }
-  ```
-* **Quality Guardrails:**
-  * Minimum MTCNN face detection probability: $\ge$ `MTCNN_CONFIDENCE_THRESHOLD` (default 0.90).
-  * Minimum face crop dimensions: $40 \times 40 \text{ px}$.
-  * Frames without a usable face answer `200 OK` with an `error` field so the capture loop simply tries the next frame: `"no face"`, `"low confidence face"`, `"face too small"`, `"invalid face crop"` or `"embedding extraction failed"`, e.g.
-    ```json
-    { "error": "no face" }
-    ```
-* **Error Responses:**
-  * `400 Bad Request`: `{"error": "invalid or corrupt image payload"}` when `image` is not a base64 data URL of a decodable image.
-  * `500 Internal Server Error`: `{"error": "server error during face capture"}`.
+**Errors:** `400` for a missing or invalid field, an invalid email, or an email that's already registered.
 
----
+### `POST /capture_face`
 
-#### `POST /save_face_data`
-Aggregates 5 distinct facial angle samples (front, tilted up, left 15°, right 15°, neutral), calculates their mathematical centroid vector, applies $L_2$ unit normalization, and commits the biometric profile to PostgreSQL.
+Returns the embedding of the largest face in one webcam frame. The capture page calls this five times per student. **Access:** admin.
 
-* **Access Control:** Admin required.
-* **Centroid Formula:**
-  $$\mathbf{c} = \frac{1}{K} \sum_{i=1}^K \mathbf{v}_i, \quad \mathbf{e}_{\text{final}} = \frac{\mathbf{c}}{\|\mathbf{c}\|_2}$$
-* **Request Body:**
-  ```json
-  {
-    "roll": "2026CSE042",
-    "embeddings": [
-      [0.0381, -0.0192, ...],
-      [0.0410, -0.0185, ...],
-      [0.0395, -0.0210, ...],
-      [0.0378, -0.0199, ...],
-      [0.0389, -0.0195, ...]
-    ]
-  }
-  ```
-* **Validation:** `embeddings` must be a list of 1–20 vectors of exactly 512 finite numbers; otherwise `400 Bad Request`. Unknown roll → `404 Not Found`.
-* **Success Response (`200 OK`):**
-  ```json
-  {
-    "status": "saved",
-    "message": "Biometric face profile created for 2026CSE042."
-  }
-  ```
+```json
+{ "image": "data:image/jpeg;base64,/9j/4AAQSkZJRg..." }
+```
+
+**200**
+
+```json
+{
+  "status": "success",
+  "embedding": [0.0381, -0.0192, "... 512 values ...", 0.0812],
+  "box": [142, 88, 185, 210]
+}
+```
+
+If the frame has no usable face, the response is still `200` but contains an `error` field, so the capture loop just moves on to the next frame. Possible values: `"no face"`, `"low confidence face"` (below `MTCNN_CONFIDENCE_THRESHOLD`), `"face too small"` (under 40 x 40 px), `"invalid face crop"` and `"embedding extraction failed"`.
+
+**Errors**
+
+- `400`: `{"error": "invalid or corrupt image payload"}` when `image` isn't a base64 data URL of a readable image.
+- `500`: `{"error": "server error during face capture"}`.
+
+### `POST /save_face_data`
+
+Saves a student's face profile: the average of the submitted embeddings, scaled to unit length. Also clears the recognition cache so the student can be recognised immediately. **Access:** admin.
+
+```json
+{
+  "roll": "2026CSE042",
+  "embeddings": [[0.0381, -0.0192, "..."], [0.0410, -0.0185, "..."]]
+}
+```
+
+`embeddings` must be a list of 1 to 20 vectors, each exactly 512 finite numbers.
+
+**200**
+
+```json
+{ "status": "saved", "message": "Biometric face profile created for 2026CSE042." }
+```
+
+**Errors:** `400` for invalid embeddings, `404` for an unknown roll number.
+
+### `POST /verify_student`
+
+Checks that a roll number exists. Used by the phone after the student types their roll number.
+
+**Access:** a QR token no older than 35 seconds in the body, or admin credentials.
+
+```json
+{ "roll": "2026cse042", "token": "<QR token>" }
+```
+
+**200:** `{"success": true, "roll": "2026CSE042"}` (the roll number in its stored form), or `{"success": false, "roll": null}`.
+
+**Errors:** `400` if `roll` is missing, `401` if the token is missing, expired or invalid.
+
+### `GET /get_student/<roll>`
+
+Returns the details shown on the phone's confirmation screen.
+
+**Access:** an `X-QR-Token` header with a QR token no older than 35 seconds, or admin credentials.
+
+**200**
+
+```json
+{ "roll": "2026CSE042", "first_name": "Alexander", "last_name": "Wright", "department": "CSE", "year": "2026" }
+```
+
+**Errors:** `401` for a missing, expired or invalid token, `404` for an unknown roll number.
 
 ---
 
-### 2.3 Real-Time Recognition & Tracking
+## Recognition
 
-#### `POST /recognize_with_box`
-Ingests an active video frame from an interactive kiosk client, performs periodic keyframe detection, updates multi-face CSRT correlation trackers, and runs BLAS matrix dot product matching against all registered embeddings.
+### `POST /recognize_with_box`
 
-* **Access Control:** Admin required.
-* **Request Body:**
-  ```json
-  {
-    "image": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
-    "client_id": "cam_8f9a2b1c4e"
-  }
-  ```
-* **Success Response (`200 OK`):**
-  ```json
-  {
-    "faces": [
-      {
-        "roll": "2026CSE042",
-        "confidence": 0.892,
-        "is_unknown": false,
-        "box": [140, 92, 180, 205]
-      }
-    ]
-  }
-  ```
-* **Environmental Alert (Low Light Condition):**
-  When frame brightness ($\mu_{\text{gray}} < 35$):
+Processes one kiosk frame: detects faces on keyframes, updates the trackers on the other frames, and matches faces against enrolled students. **Access:** admin.
+
+```json
+{
+  "image": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
+  "client_id": "cam_8f9a2b1c4e"
+}
+```
+
+`client_id` identifies the kiosk (one per browser tab), so each kiosk keeps its own trackers.
+
+**200**
+
+```json
+{
+  "faces": [
+    { "roll": "2026CSE042", "confidence": 0.892, "is_unknown": false, "box": [140, 92, 180, 205] }
+  ]
+}
+```
+
+`box` is `[x, y, width, height]` in pixels of the submitted frame. Unrecognised faces have `is_unknown: true`.
+
+Errors are also returned with status `200`, so the kiosk loop keeps running:
+
+- Frame too dark (mean brightness below 35):
   ```json
   {
     "faces": [],
@@ -248,199 +236,137 @@ Ingests an active video frame from an interactive kiosk client, performs periodi
     "message": "Low lighting detected. Switch to dynamic QR check-in if needed."
   }
   ```
-* **Other errors** are also returned with `200 OK` so the kiosk loop keeps running: `{"faces": [], "error": "Invalid or corrupt image data."}` for an undecodable frame, `{"faces": [], "error": "Server error during recognition."}` for unexpected failures.
-* **Coordinates:** `box` is `[x, y, w, h]` in pixels of the submitted frame.
+- Unreadable image: `{"faces": [], "error": "Invalid or corrupt image data."}`
+- Anything unexpected: `{"faces": [], "error": "Server error during recognition."}`
 
 ---
 
-### 2.4 Attendance Verification & Dynamic QR
+## Attendance and QR codes
 
-#### `POST /mark_attendance`
-Commits an idempotent attendance record for a student for the current calendar date in Indian Standard Time (IST, UTC+5:30). The roll lookup is case-insensitive (`2026cse042` matches `2026CSE042`).
+### `GET /generate_qr_token`
 
-* **Modality 1: Facial Biometrics (`method: "Face"`)**
-  * Requires authenticated session or Bearer JWT token.
-  * Request Body:
-    ```json
-    {
-      "roll": "2026CSE042",
-      "method": "Face"
-    }
-    ```
-* **Modality 2: Dynamic QR Scan (`method: "QR"`)**
-  * Public student smartphone endpoint (gated by cryptographic signature; tokens older than 35 s are rejected).
-  * Request Body:
-    ```json
-    {
-      "roll": "2026CSE042",
-      "method": "QR",
-      "qr_token": "eyJub25jZSI6Ijk0YjE3ZWE1MmM3ZiIs...fQ.aR9x1g.Xb3kq... (itsdangerous HMAC-SHA256 token)"
-    }
-    ```
-* **Success Response (`200 OK`):**
-  ```json
-  {
-    "status": "marked",
-    "message": "Attendance marked for 2026CSE042 via Face."
-  }
-  ```
-* **Duplicate Same-Day Response (`200 OK`):**
-  ```json
-  {
-    "status": "already marked today",
-    "message": "Attendance already marked for 2026CSE042 today."
-  }
-  ```
-* **Error Responses:**
-  * `400 Bad Request`: `{"status": "error", "message": "QR code expired. Please rescan."}` or `"Invalid QR code signature."`
-  * `401 Unauthorized`: Unauthenticated face submission.
-  * `404 Not Found`: Roll number is not registered in system.
+Creates a QR token for the classroom screen, the check-in URL that contains it, and that URL as a QR code. The QR code is generated on the server. **Access:** admin.
 
----
+**200**
 
-#### `GET /generate_qr_token`
-Generates a time-bound HMAC-SHA256 signed token for classroom projection, the student check-in URL that carries it, and that URL rendered as a QR code on the server (no third-party QR service sees the token).
+```json
+{
+  "status": "success",
+  "token": "eyJub25jZSI6Ijk0YjE3ZWE1MmM3ZiIs...",
+  "expires_in": 15,
+  "checkin_url": "https://attendance-system-pratyush.onrender.com/qr_mobile?token=eyJub25jZSI6...",
+  "qr_svg": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns..."
+}
+```
 
-* **Access Control:** Admin required.
-* **Token Format:** itsdangerous `URLSafeTimedSerializer` output, `<base64 payload>.<base64 timestamp>.<base64 signature>`, with payload `{"nonce": "...", "created_at": <epoch>}`.
-* **Success Response (`200 OK`):**
-  ```json
-  {
-    "status": "success",
-    "token": "eyJub25jZSI6Ijk0YjE3ZWE1MmM3ZiIs...fQ.aR9x1g.Xb3kq...",
-    "expires_in": 15,
-    "checkin_url": "https://attendance.example.edu/qr_mobile?token=eyJub25jZSI6...",
-    "qr_svg": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns..."
-  }
-  ```
-* `checkin_url` uses the scheme from one trusted `X-Forwarded-Proto` hop, so it is `https` behind a TLS-terminating proxy. `qr_svg` can be used directly as an `<img src>`.
+The token is an itsdangerous `URLSafeTimedSerializer` string (payload, timestamp and signature) with the payload `{"nonce": "...", "created_at": <epoch>}`, signed with HMAC-SHA256. `qr_svg` can be used directly as an `<img src>`. `checkin_url` uses `https` when the app sits behind a proxy that sets `X-Forwarded-Proto`.
 
----
+### `POST /verify_qr_token`
 
-#### `POST /verify_qr_token`
-Validates whether a scanned QR token has a valid signature and is at most 30 seconds old.
+Checks a scanned token: valid signature and no more than 30 seconds old. **Access:** public.
 
-* **Request Body:**
-  ```json
-  {
-    "token": "eyJub25jZSI6Ijk0YjE3ZWE1MmM3ZiIs...fQ.aR9x1g.Xb3kq..."
-  }
-  ```
-* **Success Response (`200 OK`):**
-  ```json
-  {
-    "valid": true
-  }
-  ```
-* **Error Response (`400 Bad Request`):**
-  ```json
-  {
-    "valid": false,
-    "error": "QR code expired. Please rescan."
-  }
-  ```
+```json
+{ "token": "eyJub25jZSI6Ijk0YjE3ZWE1MmM3ZiIs..." }
+```
+
+**200:** `{"valid": true}`
+
+**400:** `{"valid": false, "error": "QR code expired. Please rescan."}`
+
+### `POST /mark_attendance`
+
+Records attendance for today (IST). The roll number lookup is case-insensitive.
+
+**Face check-in.** **Access:** admin (the kiosk).
+
+```json
+{ "roll": "2026CSE042", "method": "Face" }
+```
+
+**QR check-in.** **Access:** a QR token no older than 35 seconds.
+
+```json
+{ "roll": "2026CSE042", "method": "QR", "qr_token": "eyJub25jZSI6Ijk0YjE3ZWE1MmM3ZiIs..." }
+```
+
+**200**
+
+```json
+{ "status": "marked", "message": "Attendance marked for 2026CSE042 via Face." }
+```
+
+If the student already checked in today, also `200`:
+
+```json
+{ "status": "already marked today", "message": "Attendance already marked for 2026CSE042 today." }
+```
+
+**Errors**
+
+- `400`: `{"status": "error", "message": "QR code expired. Please rescan."}`, or `"Invalid QR code signature."`
+- `401`: a `Face` check-in without admin credentials.
+- `404`: unknown roll number.
 
 ---
 
-#### `POST /verify_student`
-Checks whether a roll number exists. Used by the student's phone after scanning the classroom QR code.
+## Records
 
-* **Access Control:** a live QR token in the body (≤ 35 s old) **or** admin credentials.
-* **Request Body:**
-  ```json
-  { "roll": "2026cse042", "token": "<QR token>" }
-  ```
-* **Success Response (`200 OK`):** `{"success": true, "roll": "2026CSE042"}` (canonical roll) or `{"success": false, "roll": null}`.
-* **Error Responses:** `400` missing roll; `401` missing/expired/invalid QR token.
+### `GET /records`
 
----
+All attendance records, grouped by date. **Access:** admin.
 
-#### `GET /get_student/<roll>`
-Returns the public profile shown on the phone's confirmation screen.
+**200**
 
-* **Access Control:** `X-QR-Token: <QR token>` header (≤ 35 s old) **or** admin credentials.
-* **Success Response (`200 OK`):**
-  ```json
-  { "roll": "2026CSE042", "first_name": "Alexander", "last_name": "Wright", "department": "CSE", "year": "2026" }
-  ```
-* **Error Responses:** `401` missing/expired/invalid QR token; `404` unknown roll.
+```json
+{
+  "2026-10-15": [
+    { "roll": "2026CSE042", "method": "Face", "time": "09:14:22" },
+    { "roll": "2026ECE001", "method": "QR", "time": "09:15:08" }
+  ]
+}
+```
 
----
+**500:** `{"error": "Failed to load attendance records."}`
 
-### 2.5 Audit Ledger & Data Export
+### `GET /dashboard_data`
 
-#### `GET /records`
-Retrieves all historical attendance events chronologically grouped by calendar date.
+Counts for today. **Access:** admin.
 
-* **Access Control:** Admin required.
-* **Success Response (`200 OK`):**
-  ```json
-  {
-    "2026-10-15": [
-      {
-        "roll": "2026CSE042",
-        "method": "Face",
-        "time": "09:14:22"
-      },
-      {
-        "roll": "2026ECE001",
-        "method": "QR",
-        "time": "09:15:08"
-      }
-    ]
-  }
-  ```
-* **Error Response (`500`):** `{"error": "Failed to load attendance records."}`
+**200:** `{"total_students": 120, "present": 87, "absent": 33}`
+
+**500:** the same keys set to `0`, plus an `error` message.
+
+### `GET /export_records`
+
+Downloads records as a CSV file. **Access:** admin.
+
+Optional query parameters:
+
+| Parameter | Example | Filters by |
+| --- | --- | --- |
+| `date` | `2026-10-15` | Date (`YYYY-MM-DD`). Any other format returns `400`. |
+| `dept` | `CSE` | Department code |
+| `roll` | `2026CSE042` | Roll number |
+
+The response has `Content-Type: text/csv` and a `Content-Disposition` header with a timestamped filename such as `attendance_report_20261015_091530.csv`. Columns: `Attendance ID`, `Roll Number`, `Student Name`, `Department`, `Year`, `Email`, `Method`, `Date (IST)`, `Time (IST)`.
+
+### `POST /clear_records`
+
+Deletes every attendance record. **Access:** admin.
+
+**200:** `{"status": "cleared", "message": "All attendance records cleared."}`
 
 ---
 
-#### `GET /dashboard_data`
-Today's (IST) headline counts for the dashboard.
+## Monitoring
 
-* **Access Control:** Admin required.
-* **Success Response (`200 OK`):** `{"total_students": 120, "present": 87, "absent": 33}`
-* **Error Response (`500`):** same keys set to `0` plus an `error` message.
+### `GET /metrics`
 
----
+Prometheus metrics. **Access:** public, so restrict it at the proxy or network level if the deployment is exposed.
 
-#### `POST /clear_records`
-Deletes **all** attendance records.
-
-* **Access Control:** Admin required.
-* **Success Response (`200 OK`):** `{"status": "cleared", "message": "All attendance records cleared."}`
-
----
-
-#### `GET /export_records`
-Streams an RFC 4180 compliant CSV export file containing attendance logs enriched with student profile metadata.
-
-* **Access Control:** Admin required.
-* **Query Parameters (Optional Filters):**
-  * `date`: Filter by `YYYY-MM-DD`
-  * `dept`: Filter by department code (`CSE`, `ECE`)
-  * `roll`: Filter by specific student roll number
-* **Error Response:** `400 Bad Request` if `date` is not `YYYY-MM-DD`.
-* **Headers Returned:**
-  ```http
-  Content-Type: text/csv
-  Content-Disposition: attachment; filename=attendance_report_20261015_091530.csv
-  ```
-* **CSV Columns:**
-  `Attendance ID`, `Roll Number`, `Student Name`, `Department`, `Year`, `Email`, `Method`, `Date (IST)`, `Time (IST)`
-
----
-
-### 2.6 Observability & Telemetry
-
-#### `GET /metrics`
-Exposes system runtime telemetry for Prometheus ingestion in OpenMetrics format.
-
-* **Access Control:** Public / Cluster-internal.
-* **Exported Metrics:**
-  * `http_requests_total{method="POST", endpoint="student.register", status="200"}`
-  * `http_request_duration_seconds_bucket{le="0.05", endpoint="attendance.recognize_with_box"}`
-  * `attendance_marked_total{method="Face"}`
-  * `attendance_marked_total{method="QR"}`
-  * `active_camera_clients_total` (kiosk sessions active in the last 120 s, per process)
-
-Liveness is evaluated in the kiosk browser, so there is no server-side liveness metric.
+| Metric | Type | Description |
+| --- | --- | --- |
+| `http_requests_total` | counter | Requests by `method`, `endpoint` and `status` |
+| `http_request_duration_seconds` | histogram | Request latency by `method` and `endpoint` |
+| `attendance_marked_total` | counter | Check-ins by `method` (`Face` or `QR`) |
+| `active_camera_clients_total` | gauge | Kiosks active in the last 120 seconds, per process |

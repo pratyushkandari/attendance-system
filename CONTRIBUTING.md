@@ -1,113 +1,47 @@
-# Contributing Guide
+# Contributing
 
-Thank you for your interest in contributing to the **Enterprise Biometric Attendance System**. This project adheres to production engineering standards practiced across high-reliability systems.
+Issues and pull requests are welcome. For anything bigger than a small fix, please open an issue first so we can agree on the approach.
 
----
+## Setup
 
-## 1. Development Environment Setup
-
-### Prerequisites
-- Python 3.10+
-- PostgreSQL 16 (or SQLite for local development via `DATABASE_URL=sqlite:///attendance.db`)
-- Redis 7+ (optional; transparent in-memory fallback enabled)
-- Git 2.30+
-
-### Local Setup
 ```bash
-# Clone the repository
 git clone https://github.com/pratyushkandari/attendance-system.git
 cd attendance-system
-
-# Initialize Python virtual environment
 python -m venv venv
-source venv/bin/activate       # On Linux/macOS
-.\venv\Scripts\Activate.ps1    # On Windows PowerShell
-
-# Install dependencies (pinned CPU-only PyTorch first, as in CI and the Dockerfile),
-# then the app plus test and lint tools
-pip install --upgrade pip
-pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements-dev.txt
-
-# Configure environment variables, then set SECRET_KEY in .env (the app will not start without it):
-#   python -c "import secrets; print(secrets.token_hex(32))"
-cp .env.example .env
+source venv/bin/activate          # Windows: .\venv\Scripts\activate
+make install                      # CPU-only PyTorch, then requirements-dev.txt
+cp .env.example .env              # set SECRET_KEY
 ```
 
-Runtime dependencies live in `requirements.txt` (installed into the Docker image); test and lint tools live in `requirements-dev.txt`. Keep the PyTorch pins identical in the Dockerfile, `.github/workflows/ci.yml`, the Makefile and the README.
+`requirements.txt` has the runtime dependencies (installed in the Docker image) and `requirements-dev.txt` adds the test and lint tools. If you change the PyTorch version, update it everywhere it's pinned: the Dockerfile, `.github/workflows/ci.yml`, the Makefile and the README.
 
----
+## Before opening a pull request
 
-## 2. Coding Standards & Repository Conventions
+Run the same checks as CI:
 
-### Style & Linting
-- **PEP 8**: Strict adherence required.
-- **PEP 484**: All public functions, methods, and classes must include explicit type annotations.
-- **PEP 257**: All modules, classes, and exported functions must feature Google-style docstrings.
-- **Formatting**: Line length capped at 100 characters.
-
-Run the same checks as CI before committing (both fail the CI build on any finding):
 ```bash
-ruff check .
-bandit -r app/ -ll
+make lint     # ruff check . && bandit -r app/ -ll
+make test     # pytest
 ```
 
-### Git Commit Guidelines
-We enforce the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+The tests use in-memory SQLite and an in-process cache (see `tests/conftest.py`), so they never touch your local PostgreSQL or Redis.
 
-| Prefix | Usage | Example |
-| :--- | :--- | :--- |
-| `feat` | New user-facing capability | `feat(api): add batch student embedding export endpoint` |
-| `fix` | Bug fix or error resolution | `fix(crypto): prevent timing side-channel in token validation` |
-| `refactor` | Code restructuring without functional change | `refactor(vector): vectorize matrix dot product matching` |
-| `test` | Adding or updating unit/integration tests | `test(e2e): cover replay attack prevention in QR validation` |
-| `docs` | Documentation and architecture updates | `docs(rfc): add ADR-005 on distributed cache fallback` |
-| `chore` | Build scripts, dependencies, CI configuration | `chore(deps): bump facenet-pytorch to 2.6.0` |
+- Add or update tests for any behaviour you change. Bug fixes should come with a test that fails without the fix.
+- Keep lines under 100 characters and add type hints to new functions; ruff enforces the rest (see `pyproject.toml`).
+- Keep pull requests focused on one change, and describe what changed and why.
 
----
+## Commit messages
 
-## 3. Testing Policy & Verification
+This repository uses [Conventional Commits](https://www.conventionalcommits.org/):
 
-Pull Requests will not be merged unless:
-1. **100% of existing test cases pass** with zero warnings or deprecation regressions.
-2. **New endpoints or business logic are accompanied by automated tests** under `tests/`.
-3. Code coverage does not drop below the current baseline (about 74% line+branch; the model-inference code needs downloaded weights and is verified end to end instead).
-
-The suite uses an in-memory SQLite database and the in-process cache (see `tests/conftest.py`), so it never touches your local PostgreSQL or Redis.
-
-### Running Test Suites
-```bash
-# Run all unit and integration tests
-python -m pytest -v
-
-# Run with coverage report
-python -m pytest --cov=app --cov-report=term-missing tests/
-
-# Run only the attendance / API integration tests
-python -m pytest tests/test_attendance.py
+```
+fix(qr): reject tokens signed with the old SHA-1 digest
+feat(kiosk): show the match score under each face
+docs: document the Render deployment
 ```
 
----
+Common types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `chore`.
 
-## 4. Branching & Pull Request Workflow
+## Security issues
 
-1. Create a focused branch off `main`:
-   ```bash
-   git checkout -b feat/add-liveness-threshold-config
-   ```
-2. Make atomic, well-documented commits following the Conventional Commit syntax.
-3. Validate locally:
-   ```bash
-   ruff check . && bandit -r app/ -ll && python -m pytest -v
-   ```
-4. Push branch to your fork or remote origin and open a Pull Request targeting `main`.
-5. Ensure PR description details:
-   - Summary of changes and architectural motivation.
-   - Related Issue or RFC reference.
-   - Benchmark or profiling data if modifying vector math or AI pipelines.
-
----
-
-## 5. Security Vulnerability Reporting
-
-Please review [SECURITY.md](docs/SECURITY.md) before disclosing potential security vulnerabilities. Do **not** open public GitHub issues for critical zero-day exploits or credential leakages.
+Please don't report vulnerabilities in public issues. See [docs/SECURITY.md](docs/SECURITY.md).

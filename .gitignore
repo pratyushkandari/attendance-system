@@ -67,6 +67,5 @@ yarn-error.log*
 *~
 .DS_Store
 
-# Temporary & AI IDE artifacts
-.gemini/
+# Scratch files
 scratch/
