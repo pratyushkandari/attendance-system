@@ -20,22 +20,22 @@ This document tracks foundational architectural decisions, technical trade-offs,
 **Accepted**
 
 ### Context
-Running deep multi-task cascaded convolutional neural networks (P-Net, R-Net, O-Net) on every incoming video frame from a 30 FPS client stream generates ~320ms of CPU compute time per frame. On commodity x86_64 cloud containers lacking dedicated GPUs, this drops video throughput to 2–4 FPS, introducing unacceptable visual latency and bounding-box jitter for kiosk terminals.
+Running deep multi-task cascaded convolutional neural networks (P-Net, R-Net, O-Net) plus an embedding network on every incoming video frame is the most expensive work in the system. On commodity x86_64 cloud containers lacking dedicated GPUs, doing it per frame limits the kiosk to a low frame rate with visible bounding-box lag.
 
 ### Decision
 Decouple face localization from identity recognition by implementing a 1:4 periodic detection schedule paired with continuous object tracking:
 1. **Periodic Keyframe Detection:** Run MTCNN only once every 4 frames (or whenever the active tracker list drops to zero).
-2. **Inter-Frame Correlation Tracking:** Between MTCNN passes, hand off detected coordinates to OpenCV Channel and Spatial Reliability Trackers (`cv2.TrackerCSRT` or legacy KCF fallback). CSRT executes in ~8ms on CPU, sustaining a fluid 28–30 FPS display rate.
+2. **Inter-Frame Correlation Tracking:** Between MTCNN passes, hand off detected coordinates to OpenCV Channel and Spatial Reliability Trackers (`cv2.TrackerCSRT` or legacy KCF fallback). A tracker update is far cheaper than detection plus embedding, so most frames skip the neural networks entirely.
 3. **Multi-Camera Isolation:** Scope tracker instances and frame counts to a client-generated ID (`client_id`) stored in a lock-guarded, per-process in-memory session registry with a 120-second inactivity TTL.
 
 ### Consequences
-* **Positive:** Reduced CPU frame-processing latency from 320ms to under 40ms (~8x speedup). Eliminates GPU dependency for edge classroom kiosks.
+* **Positive:** Neural-network cost is paid on roughly one frame in four instead of every frame, without a GPU. (The per-stage timings have not been benchmarked in this repository; see `docs/BENCHMARKS.md`.)
 * **Positive:** Prevents tracker state leakage across concurrent browser terminals.
 * **Negative:** Rapid lateral head acceleration exceeding the CSRT search window between keyframes can cause transient bounding box displacement for up to 3 frames before MTCNN re-acquires.
 
 ### Alternatives Considered
-* *MTCNN on Every Frame:* Rejected due to severe CPU saturation and <5 FPS throughput.
-* *Haar Cascades:* Rejected due to unacceptable false positive rates (>18%) under varied classroom lighting angles.
+* *MTCNN on Every Frame:* Rejected because it multiplies the CPU cost of the most expensive stage by four.
+* *Haar Cascades:* Rejected because they are known to produce more false positives and miss angled faces under varied classroom lighting.
 * *MediaPipe Face Mesh:* Viable alternative; FaceNet/MTCNN was preferred for tighter integration with the PyTorch VGGFace2 embedding pipeline.
 
 ---
@@ -46,7 +46,7 @@ Decouple face localization from identity recognition by implementing a 1:4 perio
 **Accepted**
 
 ### Context
-Matching a 512-dimensional query embedding vector against an enrolled population of $N$ students requires computing similarity scores across the vector space. Iterating through database records with Python-level `for` loops and computing pairwise cosine similarities takes $O(N \cdot d)$ time, taking ~15ms for $N = 1,000$ and scaling linearly to >150ms for $N = 10,000$, violating the sub-50ms kiosk SLA.
+Matching a 512-dimensional query embedding vector against an enrolled population of $N$ students requires computing similarity scores across the vector space. Iterating through database records with Python-level `for` loops and computing pairwise cosine similarities takes $O(N \cdot d)$ time with interpreter overhead per student (measured: 0.85 ms for $N = 1,000$ and 10.3 ms for $N = 10,000$ with one `np.dot` per student).
 
 ### Decision
 Enforce unit $L_2$-norm normalization at embedding generation time:
@@ -56,13 +56,13 @@ $$\text{CosineSim}(\mathbf{q}, \mathbf{e}_i) = \frac{\mathbf{q} \cdot \mathbf{e}
 The entire enrolled student vector base is stacked into a contiguous 2D float32 matrix $\mathbf{E} \in \mathbb{R}^{N \times 512}$. Query matching executes via a single C-level BLAS matrix-vector product (`np.dot(matrix, query)`), returning similarity scores across all $N$ profiles simultaneously.
 
 ### Consequences
-* **Positive:** Query execution time dropped from 15ms to **0.2ms for 10,000 profiles** (75x speedup), utilizing SIMD vector instructions (AVX2/FMA).
-* **Positive:** Zero external database query round-trip during active multi-face tracking frames.
-* **Negative:** Requires pre-loading normalized vectors into application memory. For institutional cohorts ($N < 50,000$), memory consumption is negligible ($50,000 \times 512 \times 4 \text{ bytes} \approx 102 \text{ MB}$).
+* **Positive:** Measured single-threaded: 0.06 ms for 1,000 profiles and 0.92 ms for 10,000 (about 11–14x faster than the per-student loop); see `docs/BENCHMARKS.md`.
+* **Positive:** The stacked matrix is cached per process (`get_face_profiles()`), so keyframes make no database query. Enrollment invalidates the cache in its own process; other workers/pods refresh within 30 seconds.
+* **Negative:** Requires holding normalized vectors in application memory: $50,000 \times 512 \times 4 \text{ bytes} \approx 98 \text{ MiB}$ per process.
 
 ### Alternatives Considered
 * *Iterative Python Cosine Loops:* Rejected due to $O(N)$ interpreter overhead and GIL lock contention.
-* *PostgreSQL pgvector HNSW Index:* Not adopted. Embeddings are stored as JSON text in `students.embedding` and matched in memory; the Docker Compose stack uses the `pgvector/pgvector` image, but the extension is not used by the application.
+* *PostgreSQL pgvector HNSW Index:* Not adopted. Embeddings are stored as JSON text in `students.embedding` and matched in memory; Docker Compose runs plain `postgres:16`.
 
 ---
 
@@ -78,9 +78,9 @@ The platform serves two fundamentally distinct client archetypes:
 
 ### Decision
 Implement a hybrid authentication resolver (`@admin_required` decorator) evaluating credentials in prioritized sequence:
-1. **Priority 1 (Stateless API):** Inspect `Authorization: Bearer <token>` header. Validate HMAC-SHA256 cryptographic signature and expiry claim (`exp`) using stateless JWT. If valid, inject claims into request context and bypass session store.
+1. **Priority 1 (Stateless API):** Inspect `Authorization: Bearer <token>` header. Validate HMAC-SHA256 cryptographic signature and expiry claim (`exp`) using stateless JWT. If valid, allow the request without consulting the session.
 2. **Priority 2 (Web Portal):** Inspect cryptographically signed Flask session cookie. Validate authenticated admin email.
-3. **Failure:** For JSON/API endpoints, return `401 Unauthorized` with structured JSON payload. For interactive HTML routes, redirect to the login page (`/`).
+3. **Failure:** A browser navigation (preferred `Accept: text/html`) is redirected to the login page (`/`); every other caller gets `401 Unauthorized` with a JSON body. Admin HTML pages are additionally redirected by a `before_app_request` hook.
 
 ### Consequences
 * **Positive:** Unified access-control policy across human browser interactions and programmatic REST clients.
@@ -101,14 +101,14 @@ Static QR codes displayed on classroom podiums or projection screens are suscept
 Implement dynamic, time-bound rotating QR codes with cryptographic signature verification:
 1. **Token Composition:** The server generates a payload comprising a unique 12-character cryptographic nonce and Unix timestamp:
    $$\text{Payload} = \{\text{nonce}: \text{UUID4}_{[:12]}, \text{created\_at}: \text{EpochTime}\}$$
-2. **Cryptographic Signing:** Payload is serialized and signed using `URLSafeTimedSerializer` with master `SECRET_KEY` and salt `qr-attendance-token`.
+2. **Cryptographic Signing:** Payload is serialized and signed using `URLSafeTimedSerializer` with master `SECRET_KEY`, salt `qr-attendance-token` and an explicit HMAC-SHA256 digest. The server also renders the check-in URL as the QR image (`segno`), so tokens are never sent to an external QR service.
 3. **Rotation & TTL:** Kiosk UI refreshes the QR code every 5 seconds and advertises a 15-second validity. The server accepts tokens up to 30 seconds old at `/verify_qr_token` and up to 35 seconds old for the student lookup and `/mark_attendance`, to absorb cellular latency and typing time.
 4. **Idempotent Ledger:** `/mark_attendance` checks for an existing `(roll, IST date)` record before inserting (application-level check; there is no database unique constraint).
 
 ### Consequences
 * **Positive:** Shrinks remote photo-forwarding attacks to a ~35-second window; older forwarded QR images are rejected.
 * **Negative:** Because the whole class scans the same rotating code, a token cannot be single-use; anyone holding a fresh token can submit any registered roll number within the window.
-* **Positive:** Entire verification pipeline is stateless, executing HMAC signature validation in under 0.1ms without database locking.
+* **Positive:** Token verification is stateless: an HMAC check and a timestamp comparison, with no database access.
 * **Negative:** Requires dynamic classroom display (monitor/tablet) connected to the kiosk server.
 
 ---

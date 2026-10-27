@@ -3,7 +3,7 @@
 **Service:** VisionAttend Core Attendance & Identity Gateway  
 **Protocol:** HTTP/1.1 & HTTP/2 over TLS  
 **Base URL:** `http://localhost:5000` (Dev) / `https://attendance-system-60nr.onrender.com` (Prod)  
-**Specification Version:** v2.4.2  
+**Specification Version:** v2.5.0  
 
 ---
 
@@ -32,7 +32,10 @@ Cookies include standard security flags: `HttpOnly`, `SameSite=Lax`, `Path=/`.
 * **Lockout Reset:** A successful login clears the failed counter immediately.
 
 ### 1.4 Request Bodies
-All `POST` endpoints expect `Content-Type: application/json`. A missing or malformed JSON body is treated as empty and answered with the endpoint's normal `400` JSON error.
+All `POST` endpoints expect `Content-Type: application/json`. A missing or malformed JSON body is treated as empty and answered with the endpoint's normal `400` JSON error. Bodies larger than 10 MB are rejected with `413 Request Entity Too Large`: `{"error": "Request body is too large."}`.
+
+### 1.5 Unauthenticated Requests
+Admin endpoints answer API clients (fetch, curl, Postman: anything whose preferred `Accept` type is not `text/html`) with `401` and `{"error": "Unauthorized. Bearer JWT token or Admin session required."}`, or a more specific message for an expired or invalid JWT. A browser navigating to an admin URL (preferred `Accept: text/html`) is redirected to the login page (`302 Location: /`).
 
 ---
 
@@ -62,7 +65,7 @@ Authenticates administrative credentials and issues a stateless 24-hour Bearer J
   ```
 * **Error Responses:**
   * `400 Bad Request`: Missing email or password payload.
-  * `401 Unauthorized`: Invalid credentials. Returns remaining attempt count:
+  * `401 Unauthorized`: Invalid credentials (unknown emails get the same response and take the same time, because the password is always checked against a hash). Returns remaining attempt count:
     ```json
     {
       "status": "invalid",
@@ -81,7 +84,7 @@ Authenticates administrative credentials and issues a stateless 24-hour Bearer J
 ---
 
 #### `POST /register_admin`
-Provisions a new administrator profile with NIST 800-63B password complexity enforcement and salted cryptographic hashing.
+Provisions a new administrator profile with password rules (below) and a salted scrypt hash.
 
 * **Access Control:**
   * While **no administrator exists**, anyone may call it (initial bootstrap from the login page).
@@ -94,7 +97,7 @@ Provisions a new administrator profile with NIST 800-63B password complexity enf
     "password": "AdminSecure@2026!"
   }
   ```
-* **Password Validation Rules (NIST 800-63B):**
+* **Password Validation Rules** (length limits follow NIST 800-63B; the composition rules are an institutional choice that NIST does not require):
   * Minimum 8 characters, maximum 128 characters.
   * At least one uppercase character (`A-Z`) and one lowercase character (`a-z`).
   * At least one numeric digit (`0-9`).
@@ -169,10 +172,13 @@ Processes a base64-encoded webcam frame, runs MTCNN face localization, filters s
 * **Quality Guardrails:**
   * Minimum MTCNN face detection probability: $\ge$ `MTCNN_CONFIDENCE_THRESHOLD` (default 0.90).
   * Minimum face crop dimensions: $40 \times 40 \text{ px}$.
-  * Graceful rejection on missing or low-confidence faces without 500 error propagation:
+  * Frames without a usable face answer `200 OK` with an `error` field so the capture loop simply tries the next frame: `"no face"`, `"low confidence face"`, `"face too small"`, `"invalid face crop"` or `"embedding extraction failed"`, e.g.
     ```json
     { "error": "no face" }
     ```
+* **Error Responses:**
+  * `400 Bad Request`: `{"error": "invalid or corrupt image payload"}` when `image` is not a base64 data URL of a decodable image.
+  * `500 Internal Server Error`: `{"error": "server error during face capture"}`.
 
 ---
 
@@ -242,6 +248,8 @@ Ingests an active video frame from an interactive kiosk client, performs periodi
     "message": "Low lighting detected. Switch to dynamic QR check-in if needed."
   }
   ```
+* **Other errors** are also returned with `200 OK` so the kiosk loop keeps running: `{"faces": [], "error": "Invalid or corrupt image data."}` for an undecodable frame, `{"faces": [], "error": "Server error during recognition."}` for unexpected failures.
+* **Coordinates:** `box` is `[x, y, w, h]` in pixels of the submitted frame.
 
 ---
 
@@ -266,7 +274,7 @@ Commits an idempotent attendance record for a student for the current calendar d
     {
       "roll": "2026CSE042",
       "method": "QR",
-      "qr_token": "InRlc3Rfbm9uY2Ui.Z2vOlw.9z... (HMAC-SHA256 Token)"
+      "qr_token": "eyJub25jZSI6Ijk0YjE3ZWE1MmM3ZiIs...fQ.aR9x1g.Xb3kq... (itsdangerous HMAC-SHA256 token)"
     }
     ```
 * **Success Response (`200 OK`):**
@@ -291,17 +299,21 @@ Commits an idempotent attendance record for a student for the current calendar d
 ---
 
 #### `GET /generate_qr_token`
-Generates a time-bound HMAC-SHA256 cryptographically signed dynamic token for active classroom projection.
+Generates a time-bound HMAC-SHA256 signed token for classroom projection, the student check-in URL that carries it, and that URL rendered as a QR code on the server (no third-party QR service sees the token).
 
 * **Access Control:** Admin required.
+* **Token Format:** itsdangerous `URLSafeTimedSerializer` output, `<base64 payload>.<base64 timestamp>.<base64 signature>`, with payload `{"nonce": "...", "created_at": <epoch>}`.
 * **Success Response (`200 OK`):**
   ```json
   {
     "status": "success",
-    "token": "eyJhbGciOiJIUzI1NiJ9.eyJub25jZSI6ImY3YTIxYyIsImNyZWF0ZWRfYXQiOjE3MjkxMjM4MDB9...",
-    "expires_in": 15
+    "token": "eyJub25jZSI6Ijk0YjE3ZWE1MmM3ZiIs...fQ.aR9x1g.Xb3kq...",
+    "expires_in": 15,
+    "checkin_url": "https://attendance.example.edu/qr_mobile?token=eyJub25jZSI6...",
+    "qr_svg": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns..."
   }
   ```
+* `checkin_url` uses the scheme from one trusted `X-Forwarded-Proto` hop, so it is `https` behind a TLS-terminating proxy. `qr_svg` can be used directly as an `<img src>`.
 
 ---
 
@@ -311,7 +323,7 @@ Validates whether a scanned QR token has a valid signature and is at most 30 sec
 * **Request Body:**
   ```json
   {
-    "token": "eyJhbGciOiJIUzI1NiJ9..."
+    "token": "eyJub25jZSI6Ijk0YjE3ZWE1MmM3ZiIs...fQ.aR9x1g.Xb3kq..."
   }
   ```
 * **Success Response (`200 OK`):**
