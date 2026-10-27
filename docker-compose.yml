@@ -22,9 +22,9 @@ services:
     networks:
       - attendance_net
 
-  # 2. PostgreSQL Service (pgvector image; embeddings are currently stored as JSON text)
+  # 2. PostgreSQL Service (embeddings are stored as JSON text, so no extensions are needed)
   db:
-    image: pgvector/pgvector:pg16
+    image: postgres:16
     container_name: attendance_postgres
     restart: unless-stopped
     environment:

@@ -1,47 +1,11 @@
 import logging
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
-
-from .face_utils import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MATCH_THRESHOLD: float = 0.70
-
-
-def compare_embeddings(
-    input_emb: Optional[Union[np.ndarray, List[float]]],
-    stored_embeddings_list: Sequence[Optional[Union[np.ndarray, List[float]]]],
-    threshold: float = DEFAULT_MATCH_THRESHOLD,
-) -> Tuple[float, bool]:
-    """
-    Compare a query embedding vector against a sequence of candidate embeddings.
-
-    Iterates over stored facial embeddings, computing pairwise cosine similarities,
-    and returns the maximal score along with a boolean match classification.
-
-    Args:
-        input_emb: Query embedding vector, shape (512,) or convertible list.
-        stored_embeddings_list: Sequence of candidate 512-D vectors.
-        threshold: Minimum cosine similarity score required for positive match.
-
-    Returns:
-        Tuple of (best_score: float, is_match: bool). Returns (0.0, False)
-        if query or candidates are empty.
-    """
-    if input_emb is None or not stored_embeddings_list:
-        return 0.0, False
-
-    best_score: float = -1.0
-    for stored in stored_embeddings_list:
-        if stored is None:
-            continue
-        score = cosine_similarity(input_emb, stored)
-        if score > best_score:
-            best_score = score
-
-    return best_score, (best_score >= threshold)
 
 
 def vectorized_matrix_match(
