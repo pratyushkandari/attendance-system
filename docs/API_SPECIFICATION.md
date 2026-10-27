@@ -2,7 +2,7 @@
 
 **Service:** VisionAttend Core Attendance & Identity Gateway  
 **Protocol:** HTTP/1.1 & HTTP/2 over TLS  
-**Base URL:** `http://localhost:5000` (Dev) / `https://attendance-system-60nr.onrender.com` (Prod)  
+**Base URL:** `http://localhost:5000` (Dev) / `https://attendance-system-pratyush.onrender.com` (Prod)  
 **Specification Version:** v2.5.0  
 
 ---

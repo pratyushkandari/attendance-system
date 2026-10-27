@@ -1,7 +1,7 @@
 # VisionAttend: Face Recognition & Dynamic QR Attendance
 
 [![CI Pipeline](https://github.com/pratyushkandari/attendance-system/actions/workflows/ci.yml/badge.svg)](https://github.com/pratyushkandari/attendance-system/actions)
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Render_Cloud-success?style=flat-square&logo=render)](https://attendance-system-60nr.onrender.com)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Render_Cloud-success?style=flat-square&logo=render)](https://attendance-system-pratyush.onrender.com)
 [![Python](https://img.shields.io/badge/Python-3.10-blue?style=flat-square&logo=python)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-CPU-EE4C2C?style=flat-square&logo=pytorch)](https://pytorch.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=flat-square&logo=postgresql)](https://postgresql.org)
@@ -15,7 +15,7 @@ A Flask application for classroom attendance with two check-in channels:
 
 Each student is recorded at most once per day (Indian Standard Time). Admins can browse, export (CSV) and purge records, and Prometheus can scrape request metrics.
 
-🔗 **Live deployment:** [attendance-system-60nr.onrender.com](https://attendance-system-60nr.onrender.com)
+🔗 **Live deployment:** [attendance-system-pratyush.onrender.com](https://attendance-system-pratyush.onrender.com)
 
 ---
 
