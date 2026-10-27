@@ -12,9 +12,12 @@
 | **Spoofing (S)** | Presentation Attack: Holding a printed photo to the kiosk camera. | Client-side, per-face eye-region contrast-variance blink detection; no time-based bypass. | Verified in a browser run with a static photo as the webcam (not marked) vs. a clip with a blink (marked). |
 | **Spoofing (S)** | Identity Forgery: Attacker submits another student's roll number over mobile check-in. | Live HMAC QR token required (30–35 s window) plus roll existence check. A student who is in the room can still type a friend's roll number; the QR channel does not authenticate the student. | `POST /verify_student`, `GET /get_student` & `POST /mark_attendance` validate the token before any lookup or DB commit. |
 | **Tampering (T)** | Payload Modification: Altering roll number or timestamp in forwarded QR token. | Cryptographic HMAC-SHA256 signature calculated over timestamped payload with master key. | Tampered tokens fail signature verification with `BadSignature` (`400 Bad Request`). |
-| **Repudiation (R)** | Student denies check-in or claims fraudulent attendance marking. | Immutable timestamped audit ledger recording verification channel (`Face` vs `QR`). | PostgreSQL indexed logs with UTC+5:30 timestamps and admin audit export. |
+| **Repudiation (R)** | Student denies check-in or claims fraudulent attendance marking. | Timestamped record of each check-in with its channel (`Face` vs `QR`). Records are not immutable: admins can purge them. | PostgreSQL rows with IST (UTC+5:30) timestamps and CSV export. |
+| **Information Disclosure (I)** | Discovering which emails belong to administrators. | Failed logins for unknown emails run the same scrypt check as real accounts, so the response and its timing match. | `test_login_hashes_password_for_unknown_email`. |
+| **Information Disclosure (I)** | Live QR tokens leaking to third parties. | QR codes are rendered on the server (`segno`); no external service receives check-in URLs. | `test_generate_qr_token_renders_qr_code_locally`. |
 | **Information Disclosure (I)** | Unauthorized extraction of biometric vectors or student rosters. | Mandatory `@admin_required` guard on `/records`, `/dashboard_data`, and face APIs; phone-facing student lookups require a live QR token. | Unauthenticated requests rejected with `401 Unauthorized`. |
 | **Denial of Service (D)** | Automated brute-force credential stuffing against administrative portal. | Failed-login counter in `SafeCacheStore` (shared via Redis when configured): `LOCKOUT_THRESHOLD` (3) failures trigger a `LOCKOUT_DURATION_SECONDS` (15 min) lockout. | Lockout tests in `tests/test_auth.py`. |
+| **Denial of Service (D)** | Oversized request bodies sent to public endpoints. | `MAX_CONTENT_LENGTH` of 10 MB; larger bodies get `413` before being buffered. | `test_oversized_request_body_is_rejected_with_json_413`. |
 | **Elevation of Privilege (E)** | Creating unauthorized administrator accounts after system bootstrap. | Anonymous `/register_admin` is accepted only while no admin exists; afterwards an authenticated admin is required (`ALLOW_PUBLIC_ADMIN_SIGNUP=true` reopens it for demos). | `test_register_admin_*` tests in `tests/test_auth.py`. |
 | **Tampering (T)** | Cross-site request forgery against cookie-authenticated endpoints (e.g. `/clear_records`). | Session cookie is `HttpOnly` and `SameSite=Lax`, so browsers do not attach it to cross-site POSTs. | `test_session_cookie_is_httponly_and_samesite_lax`. |
 
@@ -42,9 +45,9 @@
 * **Policy:** 8–128 characters, a small blocklist, and no email-handle substring (per NIST 800-63B), plus upper/lower/digit/symbol composition rules. NIST 800-63B does not require composition rules; they are kept as an institutional policy choice.
 
 ### 3.2 Dynamic QR Signing (HMAC-SHA256)
-* Signed using `itsdangerous.URLSafeTimedSerializer` with salt `qr-attendance-token`.
+* Signed using `itsdangerous.URLSafeTimedSerializer` with salt `qr-attendance-token` and an explicit `hashlib.sha256` digest (itsdangerous defaults to HMAC-SHA1).
 * Carries cryptographic timestamp; the kiosk rotates codes every 5 s, `/verify_qr_token` rejects tokens older than 30 s and the student lookup / `/mark_attendance` endpoints reject tokens older than 35 s (`SignatureExpired`).
-* Nonce entropy: 12-character hex (48-bit pseudo-random string), eliminating token prediction attacks.
+* Forgery is prevented by the HMAC signature. The 12-hex-character random nonce only makes every token unique; it is not checked or stored, so tokens are not single-use.
 
 ### 3.3 JWT Tokens
 * Format: Standard RFC 7519 JSON Web Token signed with HS256.
@@ -52,7 +55,9 @@
 * There is no revocation list: a leaked token stays valid until it expires, and logging out clears only the browser session cookie.
 
 ### 3.4 Secret Management
-* `SECRET_KEY` signs session cookies, JWTs and QR tokens. If it is not set, a hard-coded development default is used and the app logs a warning at startup; every deployment must set its own random value.
+* `SECRET_KEY` signs session cookies, JWTs and QR tokens. It has no default: `create_app` raises at startup if it is empty or one of the values that were published in this repository (the old config default, `.env.example` and `docker-compose.yml` values). Use at least 32 random bytes, e.g. `python -c "import secrets; print(secrets.token_hex(32))"`; PyJWT warns about shorter HS256 keys.
+* `docker-compose.yml` reads `SECRET_KEY` from `.env`; Kubernetes reads it from the `attendance-secrets` Secret.
+* Rotating `SECRET_KEY` logs out every session and invalidates all JWTs and QR tokens.
 
 ---
 
@@ -60,7 +65,8 @@
 
 * **QR forwarding window:** a QR token can be reused by anyone for up to 35 seconds, so a student can still forward a fresh code (or type an absent friend's roll number) within that window.
 * **Client-side liveness:** blink detection runs in the kiosk browser; the server trusts authenticated kiosk sessions. Video replays of a blinking face are not detected.
-* **Third-party QR rendering:** the classroom QR image is generated by `api.qrserver.com`, so short-lived check-in URLs are sent to that service.
+* **Lockout abuse:** lockout is keyed by email, so anyone who knows an admin's email can lock that account for 15 minutes by entering wrong passwords. There is no per-IP rate limit.
+* **JWT lifetime:** JWTs cannot be revoked and stay valid for 24 hours, including after logout.
 * **One attendance per day:** enforced by an application-level check, not a database unique constraint.
 * **In-memory state per process:** without `REDIS_URL`, lockout counters are per Gunicorn worker/pod; kiosk tracker state is always per process.
 
