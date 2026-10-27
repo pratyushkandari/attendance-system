@@ -192,12 +192,12 @@ function addLiveFeedCard(roll, confidence, timeStr, status) {
             </div>
             <div>
                 <div class="feed-roll" style="font-weight:700; color:var(--slate-800);"></div>
-                <div style="font-size:0.7rem; color:var(--slate-400);">FaceNet Confidence: ${Math.round(confidence * 100)}%</div>
+                <div style="font-size:0.7rem; color:var(--slate-500);">FaceNet Confidence: ${Math.round(confidence * 100)}%</div>
             </div>
         </div>
         <div style="text-align:right;">
             <span class="badge ${isNew ? "badge-green" : "badge-amber"}" style="font-size:0.68rem;">${isNew ? "Recorded" : "Already Logged"}</span>
-            <div class="feed-time" style="font-size:0.68rem; color:var(--slate-400); margin-top:2px;"></div>
+            <div class="feed-time" style="font-size:0.68rem; color:var(--slate-500); margin-top:2px;"></div>
         </div>
     `;
     card.querySelector(".feed-roll").textContent = roll;
@@ -325,16 +325,8 @@ async function detectLoop() {
             let allKnownFacesLive = true;
 
             facesToRender.forEach((face, i) => {
-                const coordScaleX = video.clientWidth / targetWidth;
-                const coordScaleY = video.clientHeight / targetHeight;
-
-                const [rawX, rawY, rawW, rawH] = face.box;
-                const scaledBox = [
-                    rawX * coordScaleX,
-                    rawY * coordScaleY,
-                    rawW * coordScaleX,
-                    rawH * coordScaleY
-                ];
+                // face.box is in the coordinates of the downscaled frame sent to the server
+                const scaledBox = frameBoxToElement(face.box, targetWidth, targetHeight, video);
 
                 let box = smoothBox(prevBoxes[i], scaledBox);
                 newPrev.push(box);

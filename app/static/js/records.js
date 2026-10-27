@@ -4,7 +4,7 @@ const QR_BADGE = `<span class="badge badge-green"><svg width="12" height="12" vi
 function renderMessageRow(table, title, detail, isError) {
     table.innerHTML = `
         <tr>
-            <td colspan="3" style="text-align:center; padding:3rem 1rem; color:var(--slate-400);">
+            <td colspan="3" style="text-align:center; padding:3rem 1rem; color:var(--slate-500);">
                 <div class="msg-title" style="font-size:1.1rem; font-weight:700; color:${isError ? "var(--rose-600)" : "var(--slate-700)"}; margin-bottom:0.35rem;"></div>
                 <div class="msg-detail" style="font-size:0.8rem;"></div>
             </td>
@@ -98,30 +98,6 @@ async function loadRecords() {
             "The attendance ledger could not be retrieved. Please refresh the page or try again shortly.",
             true
         );
-    }
-}
-
-async function clearRecords() {
-    if (!confirm("Are you sure you want to permanently purge all attendance logs? This action cannot be undone.")) {
-        return;
-    }
-
-    try {
-        const res = await fetch("/clear_records", { method: "POST" });
-        if (res.status === 401) {
-            window.location.href = "/";
-            return;
-        }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            alert(data.error || "Failed to clear records.");
-            return;
-        }
-        alert(data.message || "All attendance records purged.");
-        loadRecords();
-    } catch (err) {
-        console.error("[CLEAR RECORDS ERROR]:", err);
-        alert("Failed to clear records.");
     }
 }
 

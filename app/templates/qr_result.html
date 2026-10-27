@@ -1,20 +1,28 @@
 {% extends "qr_base.html" %}
-{% block title %}Attendance Confirmed &bull; VisionAttend{% endblock %}
+{% block title %}Attendance Check-In Result &bull; VisionAttend{% endblock %}
 {% block content %}
 
 <div class="mobile-card">
-    <div style="width:64px; height:64px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:#059669; margin-bottom:1rem; box-shadow:0 0 20px rgba(16,185,129,0.2);">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Shown only after /mark_attendance confirmed a record in this browser session -->
+    <div id="resultIconOk" hidden style="width:64px; height:64px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:#059669; margin-bottom:1rem; box-shadow:0 0 20px rgba(16,185,129,0.2);">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="20 6 9 17 4 12"></polyline>
         </svg>
     </div>
+    <div id="resultIconNone" style="width:64px; height:64px; background:var(--slate-50); border:1px solid var(--slate-200); border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:var(--slate-500); margin-bottom:1rem;">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+    </div>
 
-    <h2 id="resultTitle" style="color:#0f172a; margin-bottom:0.4rem;">Attendance Recorded!</h2>
+    <h2 id="resultTitle" style="color:#0f172a; margin-bottom:0.4rem;">No Check-In Recorded Here</h2>
     <p id="resultMessage" style="margin-bottom:1.5rem;">
-        Your presence has been cryptographically validated and committed to the attendance database.
+        This browser has not completed a check-in. Scan the live classroom QR code to record your attendance.
     </p>
 
-    <div style="background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius-md); padding:1rem; text-align:left; font-size:0.8rem;">
+    <div id="resultDetails" hidden style="background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius-md); padding:1rem; text-align:left; font-size:0.8rem;">
         <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem;">
             <span style="color:var(--slate-500);">Verification Channel:</span>
             <span style="font-weight:700; color:var(--emerald-700);">Dynamic QR Session</span>
@@ -26,20 +34,33 @@
     </div>
 
     <div style="margin-top:1.5rem;">
-        <p style="font-size:0.75rem; color:var(--slate-400);">You may now close this browser tab.</p>
+        <p id="resultFooter" hidden style="font-size:0.75rem; color:var(--slate-500);">You may now close this browser tab.</p>
     </div>
 </div>
 
 <script>
-    // /mark_attendance answers "already marked today" when a record exists for today;
-    // say so instead of claiming a new record was written.
-    if (sessionStorage.getItem("qr_result_status") === "already marked today") {
-        document.getElementById("resultTitle").textContent = "Already Recorded Today";
-        document.getElementById("resultMessage").textContent =
-            "Your attendance for today was already in the attendance database. No new entry was created.";
-        document.getElementById("resultStatus").textContent = "Previously Logged";
-    }
+    // qr_verify.js stores the /mark_attendance status just before redirecting here
+    const resultStatus = sessionStorage.getItem("qr_result_status");
     sessionStorage.removeItem("qr_result_status");
+
+    if (resultStatus === "marked" || resultStatus === "already marked today") {
+        document.getElementById("resultIconOk").hidden = false;
+        document.getElementById("resultIconNone").hidden = true;
+        document.getElementById("resultDetails").hidden = false;
+        document.getElementById("resultFooter").hidden = false;
+        document.title = "Attendance Confirmed • VisionAttend";
+
+        if (resultStatus === "marked") {
+            document.getElementById("resultTitle").textContent = "Attendance Recorded!";
+            document.getElementById("resultMessage").textContent =
+                "Your QR check-in was verified and saved to the attendance database.";
+        } else {
+            document.getElementById("resultTitle").textContent = "Already Recorded Today";
+            document.getElementById("resultMessage").textContent =
+                "Your attendance for today was already in the attendance database. No new entry was created.";
+            document.getElementById("resultStatus").textContent = "Previously Logged";
+        }
+    }
 </script>
 
 {% endblock %}

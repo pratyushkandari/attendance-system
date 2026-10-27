@@ -25,7 +25,7 @@
             </svg>
             Export Logs (CSV)
         </a>
-        <button onclick="confirmClearModal()" class="btn btn-danger">
+        <button type="button" onclick="purgeAttendanceRecords(this, loadDashboard)" class="btn btn-danger">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -209,12 +209,12 @@
 
         <div style="background:var(--slate-50); padding:0.85rem; border-radius:var(--radius-md); border:1px solid var(--slate-200);">
             <div style="font-size:0.75rem; color:var(--slate-500); font-weight:700; text-transform:uppercase;">Anti-Spoofing Subsystem</div>
-            <div style="font-weight:700; color:var(--slate-800); margin-top:2px;">Eye-Blink Gradient</div>
+            <div style="font-weight:700; color:var(--slate-800); margin-top:2px;">Eye-Blink Variance</div>
             <div style="font-size:0.725rem; color:var(--emerald-600); margin-top:4px;">&bull; Liveness Active Guard</div>
         </div>
     </div>
 </div>
 
-<script src="/static/js/dashboard.js?v=2.4.3"></script>
+<script src="/static/js/dashboard.js?v=2.5.0"></script>
 
 {% endblock %}

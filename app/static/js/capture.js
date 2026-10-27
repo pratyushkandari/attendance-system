@@ -10,6 +10,8 @@ let roll = localStorage.getItem("roll");
 let collectedEmbeddings = [];
 let isCapturing = false;
 let cameraReady = false;
+// True when all samples were captured but saving them failed: a retry only re-sends them
+let savePending = false;
 
 /** Show a coloured status line; text is inserted as text, never as HTML. */
 function setStatus(text, color) {
@@ -46,8 +48,6 @@ navigator.mediaDevices.getUserMedia({
 .then(stream => {
     video.srcObject = stream;
     video.onloadedmetadata = () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
         cameraReady = true;
     };
 })
@@ -68,11 +68,25 @@ if (startBtn) {
         }
         isCapturing = true;
         startBtn.disabled = true;
+
+        if (savePending) {
+            startBtn.innerText = "Saving Face Profile...";
+            await saveFaceProfile();
+            return;
+        }
+
         startBtn.innerText = "Capturing Face Embeddings...";
         collectedEmbeddings = [];
+        resetSampleBadges();
 
         await runEnrollmentLoop();
     });
+}
+
+function finishWithRetry(label) {
+    startBtn.disabled = false;
+    startBtn.innerText = label;
+    isCapturing = false;
 }
 
 async function captureSingleFrame() {
@@ -82,6 +96,19 @@ async function captureSingleFrame() {
     const tctx = tempCanvas.getContext("2d");
     tctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
     return tempCanvas.toDataURL("image/jpeg", 0.9);
+}
+
+// The sample tiles are styled inline; remember the initial look so a retry can restore it
+const initialBadgeStyles = new Map();
+document.querySelectorAll("[id^=sampleStep], [id^=sampleStatus]").forEach(el => {
+    initialBadgeStyles.set(el, el.style.cssText);
+});
+
+function resetSampleBadges() {
+    initialBadgeStyles.forEach((cssText, el) => {
+        el.style.cssText = cssText;
+        if (el.id.startsWith("sampleStatus")) el.innerText = "Pending";
+    });
 }
 
 function updateSampleStepBadge(index, isSuccess) {
@@ -104,10 +131,13 @@ function updateSampleStepBadge(index, isSuccess) {
 }
 
 function drawFaceBox(box) {
+    // Draw in on-screen pixels; the box is in camera-frame pixels (see captureSingleFrame)
+    canvas.width = video.clientWidth;
+    canvas.height = video.clientHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (!box) return;
 
-    const [x, y, w, h] = box;
+    const [x, y, w, h] = frameBoxToElement(box, video.videoWidth, video.videoHeight, video);
     ctx.strokeStyle = "#10b981"; // Emerald green
     ctx.lineWidth = 3;
     ctx.strokeRect(x, y, w, h);
@@ -165,13 +195,15 @@ async function runEnrollmentLoop() {
 
     if (collectedEmbeddings.length < REQUIRED_SAMPLES) {
         setStatus("Failed to collect sufficient facial angles. Please retry enrollment.", "#f87171");
-        startBtn.disabled = false;
-        startBtn.innerText = "Retry 5-Angle Face Capture";
-        isCapturing = false;
+        finishWithRetry("Retry 5-Angle Face Capture");
         return;
     }
 
-    // Submit embeddings to backend
+    await saveFaceProfile();
+}
+
+/** Send the collected samples; on failure keep them so "Retry Save" does not re-capture. */
+async function saveFaceProfile() {
     setStatus("Synthesizing 512-D centroid vector profile...", "#60a5fa");
 
     try {
@@ -192,23 +224,22 @@ async function runEnrollmentLoop() {
         const saveData = await saveRes.json();
 
         if (saveData.status === "saved") {
+            savePending = false;
             setStatus(`Enrollment Complete! Biometric profile synthesized for ${roll}. Redirecting...`, "#34d399");
             localStorage.removeItem("roll");
             setTimeout(() => {
                 window.location.href = "/dashboard";
             }, 1800);
         } else {
+            savePending = true;
             setStatus(`Profile storage error: ${saveData.error || "Unknown"}`, "#f87171");
-            startBtn.disabled = false;
-            startBtn.innerText = "Retry Save";
-            isCapturing = false;
+            finishWithRetry("Retry Save");
         }
 
     } catch (err) {
         console.error("[SAVE ERROR]:", err);
+        savePending = true;
         setStatus("Network error persisting biometric vectors.", "#f87171");
-        startBtn.disabled = false;
-        startBtn.innerText = "Retry Save";
-        isCapturing = false;
+        finishWithRetry("Retry Save");
     }
 }
