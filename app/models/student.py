@@ -1,6 +1,7 @@
 import json
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Optional
 
 import numpy as np
 
@@ -17,7 +18,7 @@ def ist_now() -> datetime:
     return datetime.utcnow() + IST_OFFSET
 
 
-def ist_day_bounds(day: date) -> Tuple[datetime, datetime]:
+def ist_day_bounds(day: date) -> tuple[datetime, datetime]:
     """
     Return the ``[start, end)`` naive IST datetimes covering ``day``.
 
@@ -48,7 +49,7 @@ class Student(db.Model):
     # 512-Dimensional normalized facial vector stored as serialized JSON
     embedding = db.Column(db.Text)
 
-    def set_embedding(self, emb: Optional[Union[np.ndarray, Sequence[float], List[float]]]) -> None:
+    def set_embedding(self, emb: np.ndarray | Sequence[float] | list[float] | None) -> None:
         """
         Serializes a 512-D unit vector into a JSON string for persistent storage.
 
@@ -61,7 +62,7 @@ class Student(db.Model):
             else:
                 self.embedding = json.dumps(list(emb))
 
-    def get_embedding(self) -> Optional[List[float]]:
+    def get_embedding(self) -> list[float] | None:
         """
         Deserializes the stored JSON representation back into a Python float list.
 

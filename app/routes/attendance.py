@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import cv2
 import numpy as np
@@ -39,7 +39,7 @@ EMBEDDING_DIM = 512
 # State is per process: with several Gunicorn workers or pods, a kiosk whose frames land
 # on a different process simply starts a fresh tracker set (MTCNN re-detects next frame).
 TRACKER_SESSION_TTL_SECONDS = 120
-tracking_sessions: Dict[str, Dict[str, Any]] = {}
+tracking_sessions: dict[str, dict[str, Any]] = {}
 # Guards the registry dict itself; Gunicorn serves requests from several threads, and
 # iterating it while another thread inserts would raise "dictionary changed size".
 _tracking_lock = threading.Lock()
@@ -96,7 +96,7 @@ def _load_student_profiles():
 # /save_face_data invalidates it in the process that handled the enrollment; other
 # Gunicorn workers or pods pick the change up once their copy is older than the TTL.
 PROFILE_CACHE_TTL_SECONDS = 30
-_profile_cache: Dict[str, Any] = {"loaded_at": None, "rolls": [], "matrix": None}
+_profile_cache: dict[str, Any] = {"loaded_at": None, "rolls": [], "matrix": None}
 _profile_cache_lock = threading.Lock()
 
 
@@ -106,7 +106,7 @@ def invalidate_face_profiles() -> None:
         _profile_cache["loaded_at"] = None
 
 
-def get_face_profiles() -> Tuple[List[str], Optional[np.ndarray]]:
+def get_face_profiles() -> tuple[list[str], np.ndarray | None]:
     """
     Return ``(rolls, matrix)`` for all enrolled faces, where row ``i`` of the
     ``(N, 512)`` float32 matrix belongs to ``rolls[i]``. ``matrix`` is None when

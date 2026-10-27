@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from flask_sqlalchemy import SQLAlchemy
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 db: SQLAlchemy = SQLAlchemy()
 
 # In-memory dictionary fallback store: key -> (value_str, expires_at_timestamp_or_none)
-_memory_cache: Dict[str, Tuple[str, Optional[float]]] = {}
+_memory_cache: dict[str, tuple[str, float | None]] = {}
 
 # After a Redis failure, wait this long before trying Redis again. Without a retry the
 # store would stay on the per-process fallback forever after one network blip.
@@ -82,7 +82,7 @@ class SafeCacheStore:
                 self._mark_unavailable(e)
         return self._redis_available
 
-    def set(self, key: str, value: Any, ex: Optional[int] = None) -> bool:
+    def set(self, key: str, value: Any, ex: int | None = None) -> bool:
         """
         Store a key-value pair with optional TTL expiration in seconds.
         """
@@ -98,7 +98,7 @@ class SafeCacheStore:
         _memory_cache[key] = (str(value), expires_at)
         return True
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         """
         Retrieve cached string value by key if active and unexpired.
         """
