@@ -7,7 +7,21 @@
 Classroom attendance with two ways to check in: a face-recognition kiosk, and a rotating QR code that students scan with their phones. Built with Flask, PyTorch (FaceNet) and PostgreSQL.
 
 **Live demo:** https://attendance-system-pratyush.onrender.com
-(if the instance has been idle, the first page load can take about a minute)
+
+## Try it
+
+Open the live demo and create your own admin account: on the sign-in page, click **Initialize Admin Profile**, enter any email address and a password that meets the rules shown on the form, then sign in with them. No email is sent.
+
+Then:
+
+1. **Student Enrollment:** add a student and capture five samples of your face with the webcam.
+2. **Biometric Kiosk:** look at the camera and blink. You're marked present once the blink is seen.
+3. **Dynamic QR:** scan the code with your phone, enter the student's roll number and confirm.
+4. **Dashboard** and **Audit Logs:** see today's counts and records, and export them as CSV.
+
+The demo runs on Render's free plan and sleeps when idle, so the first page load can take about a minute. The first face request after that also has to download the FaceNet weights, so it's slower than the rest.
+
+All admin accounts see the same data, so anything you add is visible to other visitors. Only the face embedding (512 numbers) is stored, not your photos, and students can't be deleted from the UI, so use a test name rather than your own.
 
 ## How it works
 
