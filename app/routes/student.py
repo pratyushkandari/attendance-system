@@ -170,7 +170,7 @@ def capture_face():
 
         # MTCNN orders boxes largest-first (select_largest=True), so index 0 is the
         # face closest to the camera. Filter it by detection confidence.
-        detection_threshold = float(current_app.config.get("MTCNN_CONFIDENCE_THRESHOLD", 0.90))
+        detection_threshold = float(current_app.config["MTCNN_CONFIDENCE_THRESHOLD"])
         if probs is not None and probs[0] < detection_threshold:
             return jsonify({"error": "low confidence face"}), 200
 

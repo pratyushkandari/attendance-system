@@ -5,14 +5,12 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MATCH_THRESHOLD: float = 0.70
-
 
 def vectorized_matrix_match(
     query_emb: np.ndarray | None,
     rolls: Sequence[str],
     matrix: np.ndarray | None,
-    threshold: float = DEFAULT_MATCH_THRESHOLD,
+    threshold: float,
 ) -> tuple[str | None, float]:
     """
     Hardware-accelerated BLAS matrix dot-product vector matching.

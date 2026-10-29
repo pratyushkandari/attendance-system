@@ -171,8 +171,8 @@ def recognize_with_box():
                 session_data["trackers"] = []
                 session_data["tracker_data"] = []
             else:
-                detection_threshold = float(current_app.config.get("MTCNN_CONFIDENCE_THRESHOLD", 0.90))
-                match_threshold = float(current_app.config.get("FACE_MATCH_THRESHOLD", 0.70))
+                detection_threshold = float(current_app.config["MTCNN_CONFIDENCE_THRESHOLD"])
+                match_threshold = float(current_app.config["FACE_MATCH_THRESHOLD"])
 
                 new_trackers = []
                 new_tracker_data = []
