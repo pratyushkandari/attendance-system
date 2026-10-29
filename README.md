@@ -41,6 +41,13 @@ Each student is recorded at most once per day (IST). Admins can browse, filter, 
 - QR codes rendered on the server, so check-in tokens never go to a third-party service
 - Prometheus metrics at `/metrics`, plus Docker Compose and Kubernetes configs
 
+## Accuracy and performance
+
+Measured on an i5-12500H laptop with the app's own code:
+
+- **Accuracy:** 98.95% 10-fold accuracy on the LFW face pairs. With 311 people enrolled, a photo of an enrolled person is matched to the wrong student 0.03% of the time, and 0.13% of people who aren't enrolled are accepted. The default match threshold of 0.79 was chosen from these results. See [docs/ACCURACY.md](docs/ACCURACY.md).
+- **Speed:** one kiosk gets about 9 frames per second over HTTP. A detection keyframe takes 178 ms (p50) and a tracking frame 37 ms. Throughput is CPU-bound: 8 kiosks share 44 frames per second on 16 cores, but only 3.7 on one core. The app uses about 500–550 MiB of memory. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 ## Tech stack
 
 Python 3.10, Flask 3.1, SQLAlchemy 2.0, PostgreSQL 16, facenet-pytorch on CPU PyTorch 2.14, OpenCV (contrib), NumPy, PyJWT, itsdangerous, segno, Redis (optional), prometheus-client and Gunicorn. The frontend is server-rendered Jinja templates with plain JavaScript.
@@ -106,7 +113,7 @@ Settings come from environment variables; a `.env` file in the project root is l
 | `ALLOW_PUBLIC_ADMIN_SIGNUP` | `false` | Lets anyone create an admin account. Only for public demos. |
 | `LOCKOUT_THRESHOLD` | `3` | Failed logins before an email is locked. |
 | `LOCKOUT_DURATION_SECONDS` | `900` | How long the lock lasts. |
-| `FACE_MATCH_THRESHOLD` | `0.70` | Minimum cosine similarity to accept a face match. |
+| `FACE_MATCH_THRESHOLD` | `0.79` | Minimum cosine similarity to accept a face match, chosen from the [LFW evaluation](docs/ACCURACY.md). |
 | `MTCNN_CONFIDENCE_THRESHOLD` | `0.90` | Minimum face-detection confidence. |
 
 ## Project structure
@@ -123,7 +130,9 @@ app/
 ├── static/           CSS and JavaScript
 └── templates/        Jinja templates
 tests/                pytest suite (in-memory SQLite, no external services)
-docs/                 API reference, design decisions, security, operations
+tests/e2e/            end-to-end tests against the Docker Compose stack
+scripts/              LFW accuracy evaluation and kiosk load test
+docs/                 API reference, design decisions, security, operations, benchmarks, accuracy
 k8s/                  Kubernetes manifests
 ```
 
@@ -173,11 +182,16 @@ curl "http://localhost:5000/export_records?dept=CSE&date=2026-10-27" \
 make test        # python -m pytest
 make coverage    # with a coverage report
 make lint        # ruff and bandit
+make e2e         # end-to-end tests against the running Docker Compose stack
+make accuracy    # recognition accuracy on LFW (downloads about 180 MB once)
+make loadtest    # several simulated kiosks against the running Docker Compose stack
 ```
 
-The tests run against an in-memory SQLite database, so they don't need PostgreSQL, Redis or network access. The model inference path (MTCNN and FaceNet) isn't covered by unit tests because it needs the downloaded weights and real face images, and the browser-side blink check has no automated tests.
+`make test` runs against an in-memory SQLite database, so it doesn't need PostgreSQL, Redis, network access or the FaceNet weights. `make e2e` covers the rest over real HTTP: Gunicorn, PostgreSQL, Redis and the face models. With LFW photos as students, it covers registration, enrollment, face check-in (known, unknown and two people in one frame), tracking, QR check-in from a phone, same-day duplicates across both channels, Redis-backed lockout, records, CSV export and purge. Start the stack with `docker compose up -d` first. The e2e tests clear its attendance records.
 
-CI runs ruff, bandit and the test suite on every push and pull request to `main`.
+The browser-side blink check has no automated tests. Check it by hand on the kiosk page: a face should only be marked present after it blinks.
+
+CI runs ruff, bandit and `make test` on every push and pull request to `main`.
 
 ## Deployment
 
@@ -202,6 +216,7 @@ The `k8s/` directory has a Deployment, Service, ConfigMap and HorizontalPodAutos
 - [Security](docs/SECURITY.md)
 - [Operations](docs/OPERATIONS_RUNBOOK.md)
 - [Benchmarks](docs/BENCHMARKS.md)
+- [Recognition accuracy](docs/ACCURACY.md)
 - [Changelog](CHANGELOG.md)
 
 ## License

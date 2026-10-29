@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+**Upgrading:** the default `FACE_MATCH_THRESHOLD` is now 0.79. Deployments that set it explicitly keep their own value.
+
+### Changed
+- Raised the default face match threshold from 0.70 to 0.79, based on an evaluation on LFW. At 0.70, 1.4% of people who weren't enrolled were accepted as an enrolled student; at 0.79 it's 0.13%. See `docs/ACCURACY.md`.
+- The match threshold and detection confidence are read only from the config. The duplicate defaults in the routes and `vectorized_matrix_match()` are gone.
+
+### Added
+- `scripts/evaluate_accuracy.py` (`make accuracy`): recognition accuracy on LFW using the app's own detection, crop and embedding code.
+- `scripts/load_test.py` (`make loadtest`): several simulated kiosks against the Docker Compose stack over HTTP.
+- End-to-end tests in `tests/e2e/` (`make e2e`), run against the Compose stack with LFW photos as students. They're excluded from `make test` and CI.
+- `docs/ACCURACY.md`, plus load-test results in `docs/BENCHMARKS.md`.
+
+### Removed
+- Unused pytest markers (`unit`, `integration`, `crypto`).
+- `data/` and `scripts/` are excluded from the Docker build context. A local `data/` folder was being copied into the image.
+
 ## [2.5.0] - 2026-10-27
 
 **Upgrading:** `SECRET_KEY` must now be set explicitly. The app won't start without it, or with any key that has been committed to this repository.

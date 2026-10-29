@@ -1,6 +1,6 @@
 # Benchmarks
 
-Measurements of the face recognition path, from matching and profile loading up to whole kiosk requests, with notes on reproducing them.
+Measurements of the face recognition path, from matching and profile loading up to whole kiosk requests and several kiosks at once, with notes on reproducing them. Recognition accuracy is covered in [ACCURACY.md](ACCURACY.md).
 
 **Machine:** Intel Core i5-12500H, Windows 11, Python 3.10.11, NumPy 1.26.4 (OpenBLAS).
 
@@ -106,8 +106,38 @@ The kiosk sends the next frame only after the previous response arrives, then wa
 
 To reproduce, decode one kiosk frame with `decode_image_payload()`, then time `mtcnn.detect()`, `get_embedding_from_crop()` and a CSRT tracker on it. Then post a sequence of such frames to `/recognize_with_box`, using the test config and 1,000 random enrolled embeddings as in the profile benchmark. Set the three thread variables to 1 and plug the laptop in: on battery, Windows made each step 3 to 5 times slower.
 
+## Several kiosks at once
+
+`scripts/load_test.py` (`make loadtest`) sends kiosk frames to `/recognize_with_box` over real HTTP on the Docker Compose stack: Gunicorn with one worker and four threads, as in production, plus PostgreSQL and Redis. Each simulated kiosk behaves like `recognize.js`. It sends a 380 × 285 JPEG built from one LFW photo (`Colin_Powell_0001`), waits for the response, pauses 30 ms and sends the next frame, with the face moved a few pixels each time. Each level ran for 60 s after a 15 s warm-up.
+
+Latency is measured by the client, so it includes HTTP and JSON handling but no real network. Memory and CPU come from `docker stats` for the app container, where 100% is one core. Docker's VM had 16 logical CPUs and 7.6 GB of memory, and the other containers on the machine were mostly idle. No request failed and every frame found the face.
+
+No CPU limit:
+
+| Kiosks | Frames/s, total | Frames/s per kiosk | Keyframe p50 | Keyframe p95 | Tracking p50 | Tracking p95 | Peak memory | Mean CPU |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 8.8 | 8.8 | 178 ms | 242 ms | 37 ms | 59 ms | 503 MiB | 129% |
+| 2 | 17.0 | 8.5 | 200 ms | 271 ms | 36 ms | 59 ms | 503 MiB | 240% |
+| 4 | 31.2 | 7.8 | 230 ms | 377 ms | 34 ms | 54 ms | 543 MiB | 422% |
+| 8 | 44.4 | 5.6 | 305 ms | 471 ms | 56 ms | 220 ms | 547 MiB | 566% |
+
+The app container limited to one CPU (`docker update --cpus 1 attendance_app`):
+
+| Kiosks | Frames/s, total | Frames/s per kiosk | Keyframe p50 | Keyframe p95 | Tracking p50 | Tracking p95 | Peak memory | Mean CPU |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 6.3 | 6.3 | 242 ms | 361 ms | 63 ms | 163 ms | 548 MiB | 99% |
+| 2 | 4.8 | 2.4 | 861 ms | 1,170 ms | 178 ms | 368 ms | 548 MiB | 100% |
+| 4 | 3.8 | 1.0 | 2,946 ms | 3,662 ms | 366 ms | 666 ms | 548 MiB | 101% |
+| 8 | 3.7 | 0.5 | 4,063 ms | 5,808 ms | 1,266 ms | 2,541 ms | 548 MiB | 100% |
+
+What this shows:
+
+- **The work is CPU-bound.** One kiosk running flat out keeps about 1.3 cores busy. With cores to spare, throughput grows with the number of kiosks: 8 kiosks get 44 frames/s in total, 5.6 each.
+- **On one CPU, extra kiosks make it worse.** The four Gunicorn threads compete for the same core, so total throughput falls from 6.3 to 3.7 frames/s and keyframes take 3 to 6 s. Plan for about one core per kiosk, and add cores or replicas to serve more (the HPA in `k8s/` scales on CPU).
+- **Memory is about 500–550 MiB** once the models are loaded, whatever the load. That's close to the 512 MB of the smallest cloud instances.
+
 ## Not measured yet
 
 - **Network and browser time.** The network round trip, the browser's canvas capture and the browser's JPEG encoding all add to every frame.
-- **Production hardware.** A small cloud instance such as Render's will be slower than this laptop. To see real numbers on a deployment, watch the `http_request_duration_seconds` histogram for `attendance.recognize_with_box` on `/metrics` while a kiosk is running.
+- **The live deployment.** The one-CPU run above is the closest local stand-in, and a smaller cloud instance will be slower still. To see real numbers on a deployment, watch the `http_request_duration_seconds` histogram for `attendance.recognize_with_box` on `/metrics` while a kiosk is running.
 - **QR token checks.** Each is an HMAC-SHA256 verification and a timestamp comparison with no database access, and they weren't benchmarked separately.

@@ -68,7 +68,7 @@ Detection and embedding are by far the most expensive steps, so they only run on
 
 ### Matching
 
-Every embedding is scaled to unit length, so cosine similarity is just a dot product. The enrolled embeddings are stacked into an `N x 512` float32 matrix, and `matrix @ query` gives every student's score in one call. The best score counts as a match if it's at least `FACE_MATCH_THRESHOLD` (0.70 by default).
+Every embedding is scaled to unit length, so cosine similarity is just a dot product. The enrolled embeddings are stacked into an `N x 512` float32 matrix, and `matrix @ query` gives every student's score in one call. The best score counts as a match if it's at least `FACE_MATCH_THRESHOLD`. The default of 0.79 comes from the LFW evaluation in [docs/ACCURACY.md](docs/ACCURACY.md): it's the lowest value that kept false accepts at or below 0.1%.
 
 Building that matrix means loading and parsing every stored embedding, which is slow, so it's cached per process. The cache is rebuilt after 30 seconds, or straight away when an enrollment is saved in the same process. Timings are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
