@@ -90,6 +90,7 @@ class Config:
     LOCKOUT_THRESHOLD: int = int(os.getenv("LOCKOUT_THRESHOLD", "3"))
     LOCKOUT_DURATION_SECONDS: int = int(os.getenv("LOCKOUT_DURATION_SECONDS", "900"))
 
-    # Biometric Inference Thresholds
-    FACE_MATCH_THRESHOLD: float = float(os.getenv("FACE_MATCH_THRESHOLD", "0.70"))
+    # Biometric Inference Thresholds. 0.79 is the lowest match threshold that kept false
+    # accepts at or below 0.1% on LFW; see docs/ACCURACY.md.
+    FACE_MATCH_THRESHOLD: float = float(os.getenv("FACE_MATCH_THRESHOLD", "0.79"))
     MTCNN_CONFIDENCE_THRESHOLD: float = float(os.getenv("MTCNN_CONFIDENCE_THRESHOLD", "0.90"))
