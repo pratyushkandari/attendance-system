@@ -39,6 +39,9 @@ instance/
 postgres_data/
 grafana_data/
 
+# Evaluation data: the LFW download, cached embeddings and results
+data/
+
 # Unit Tests & Coverage
 .tox/
 .nox/

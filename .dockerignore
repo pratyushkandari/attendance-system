@@ -13,3 +13,6 @@ __pycache__/
 htmlcov/
 tests/
 scratch/
+# Evaluation tooling and the LFW download (hundreds of MB) aren't needed in the image
+scripts/
+data/

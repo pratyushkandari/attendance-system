@@ -22,15 +22,14 @@ classifiers = [
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-v --tb=short --strict-markers"
+# End-to-end tests need the Docker Compose stack, so they only run with `make e2e`
+addopts = "-v --tb=short --strict-markers -m 'not e2e'"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
-    "integration: integration tests against database or HTTP client",
-    "unit: isolated unit tests",
-    "crypto: cryptographic HMAC and token verification tests",
+    "e2e: end-to-end tests against the running Docker Compose stack",
 ]
 
 [tool.coverage.run]

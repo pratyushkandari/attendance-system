@@ -3,3 +3,5 @@ pytest==9.1.1
 pytest-cov==7.1.0
 ruff==0.17.3
 bandit==1.9.4
+# HTTP client for scripts/load_test.py and the e2e tests
+requests==2.34.2
