@@ -72,6 +72,14 @@ Marking the wrong person present is worse than not recognising someone. A studen
 | 0.75 | 90.18% | 0.03% | 0.48% | 0.29% | 0.03% |
 | **0.79 (default)** | **81.55%** | **0.03%** | **0.13%** | **0.09%** | **0.00%** |
 
+In counts, at 0.79:
+
+- 1 of the 3,870 photos of enrolled people was matched to the wrong person.
+- 7 of the 5,438 strangers were accepted.
+- None of the 3,000 different-person pairs were accepted.
+
+That's 8 false accepts in 9,308 kiosk photos (0.086%). With so few errors, the rate isn't pinned down precisely: the 95% confidence interval (exact Poisson) runs from 0.04% to 0.17%. The threshold was also chosen on the same data it's reported on, which makes the estimate slightly optimistic. Read it as "about 0.1% on LFW", not as a guarantee.
+
 Raising the threshold from 0.70 barely changes how often one enrolled student is mistaken for another. What it changes is strangers. At 0.70, about 1 in 70 people who weren't enrolled was accepted as someone who was. The cost is that 18% of single photos of enrolled people aren't recognised, against 4% at 0.70.
 
 The kiosk sees a student over several keyframes, which gives them several chances to be recognised. A stranger also gets several chances, so the per-photo rates are the fair comparison.
