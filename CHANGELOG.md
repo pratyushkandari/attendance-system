@@ -15,6 +15,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - `scripts/load_test.py` (`make loadtest`): several simulated kiosks against the Docker Compose stack over HTTP.
 - End-to-end tests in `tests/e2e/` (`make e2e`), run against the Compose stack with LFW photos as students. They're excluded from `make test` and CI.
 - `docs/ACCURACY.md`, plus load-test results in `docs/BENCHMARKS.md`.
+- Browser tests in `tests/browser/` (`make browser`): Playwright drives the admin pages, enrollment, the kiosk (through a fake camera) and QR check-in against the Compose stack. They're excluded from `make test` and CI.
+- 89 more unit and integration tests, covering page routes, validation errors, the kiosk's keyframe and tracking paths with the face models stubbed, and the FaceNet wrapper. That's 148 in total, and coverage rose from 74% to 92%.
+- CI uploads the JUnit report and coverage XML as the `test-results` artifact.
+- `docs/TESTING.md`: every suite, the manual checks and the latest results.
 
 ### Removed
 - Unused pytest markers (`unit`, `integration`, `crypto`).

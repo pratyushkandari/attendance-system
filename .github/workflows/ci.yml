@@ -42,4 +42,12 @@ jobs:
 
       - name: Run Automated Test Suite (Pytest)
         run: |
-          pytest -v --cov=app --cov-report=term-missing
+          pytest -v --cov=app --cov-report=term-missing \
+            --cov-report=xml:test-results/coverage.xml --junitxml=test-results/junit.xml
+
+      - name: Upload Test Report and Coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/

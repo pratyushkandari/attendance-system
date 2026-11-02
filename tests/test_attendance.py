@@ -327,3 +327,49 @@ def test_roll_sequence_is_per_department_prefix(authenticated_client):
     assert _register(authenticated_client, "Nina", dept="CSE") == "2026CSE001"
     assert _register(authenticated_client, "Omar", dept="CS") == "2026CS001"
     assert _register(authenticated_client, "Pia", dept="CSE") == "2026CSE002"
+
+
+def test_mark_attendance_rejects_incomplete_and_unknown_requests(authenticated_client):
+    res = authenticated_client.post("/mark_attendance", json={"roll": "2026CSE001"})
+    assert res.status_code == 400
+
+    res = authenticated_client.post("/mark_attendance", json={"roll": "2026CSE001", "method": "Fingerprint"})
+    assert res.status_code == 400
+    assert res.get_json()["message"] == "Invalid attendance method."
+
+    res = authenticated_client.post("/mark_attendance", json={"roll": "2099XYZ999", "method": "Face"})
+    assert res.status_code == 404
+
+
+def test_records_group_check_ins_by_day(authenticated_client, app):
+    face_roll = _register(authenticated_client, "Tara")
+    qr_roll = _register(authenticated_client, "Uma")
+    authenticated_client.post("/mark_attendance", json={"roll": face_roll, "method": "Face"})
+    authenticated_client.post("/mark_attendance", json={"roll": qr_roll, "method": "QR", "qr_token": _qr_token(app)})
+
+    records = authenticated_client.get("/records").get_json()
+    (day,) = records.values()
+    assert {(r["roll"], r["method"]) for r in day} == {(face_roll, "Face"), (qr_roll, "QR")}
+
+
+def test_export_records_filters_by_department_and_roll(authenticated_client):
+    cse = _register(authenticated_client, "Vera", dept="CSE")
+    ece = _register(authenticated_client, "Will", dept="ECE")
+    for roll in (cse, ece):
+        authenticated_client.post("/mark_attendance", json={"roll": roll, "method": "Face"})
+
+    def exported_rolls(query):
+        rows = authenticated_client.get(f"/export_records?{query}").data.decode().strip().splitlines()
+        return [row.split(",")[1] for row in rows[1:]]
+
+    assert exported_rolls("dept=ece") == [ece]
+    assert exported_rolls(f"roll={cse.lower()}") == [cse]
+
+
+def test_clear_records_deletes_every_check_in(authenticated_client):
+    roll = _register(authenticated_client, "Xena")
+    authenticated_client.post("/mark_attendance", json={"roll": roll, "method": "Face"})
+
+    assert authenticated_client.post("/clear_records").get_json()["status"] == "cleared"
+    assert authenticated_client.get("/records").get_json() == {}
+    assert authenticated_client.get("/dashboard_data").get_json()["present"] == 0

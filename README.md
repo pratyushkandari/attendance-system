@@ -129,6 +129,7 @@ app/
 └── templates/        Jinja templates
 tests/                pytest suite (in-memory SQLite, no external services)
 tests/e2e/            end-to-end tests against the Docker Compose stack
+tests/browser/        Playwright browser tests against the Docker Compose stack
 scripts/              LFW accuracy evaluation and kiosk load test
 docs/                 API reference, design decisions, security, operations, benchmarks, accuracy
 k8s/                  Kubernetes manifests
@@ -181,15 +182,16 @@ make test        # python -m pytest
 make coverage    # with a coverage report
 make lint        # ruff and bandit
 make e2e         # end-to-end tests against the running Docker Compose stack
+make browser     # Playwright browser tests against the running Docker Compose stack
 make accuracy    # recognition accuracy on LFW (downloads about 180 MB once)
 make loadtest    # several simulated kiosks against the running Docker Compose stack
 ```
 
 `make test` runs against an in-memory SQLite database, so it doesn't need PostgreSQL, Redis, network access or the FaceNet weights. `make e2e` covers the rest over real HTTP: Gunicorn, PostgreSQL, Redis and the face models. With LFW photos as students, it covers registration, enrollment, face check-in (known, unknown and two people in one frame), tracking, QR check-in from a phone, same-day duplicates across both channels, Redis-backed lockout, records, CSV export and purge. Start the stack with `docker compose up -d` first. The e2e tests clear its attendance records.
 
-The browser-side blink check has no automated tests. Check it by hand on the kiosk page: a face should only be marked present after it blinks.
+`make browser` drives the pages in Chromium: login, every admin page, registration, enrollment and the kiosk through a fake camera, QR check-in from a phone-sized browser, records, export, purge and sign-out. A real person blinking at a webcam is still a manual check. [docs/TESTING.md](docs/TESTING.md) lists every suite, the manual checks and the latest results.
 
-CI runs ruff, bandit and `make test` on every push and pull request to `main`.
+CI runs ruff, bandit and `make test` on every push and pull request to `main`, and uploads the test report and coverage as an artifact.
 
 ## Deployment
 
@@ -215,6 +217,7 @@ The `k8s/` directory has a Deployment, Service, ConfigMap and HorizontalPodAutos
 - [Operations](docs/OPERATIONS_RUNBOOK.md)
 - [Benchmarks](docs/BENCHMARKS.md)
 - [Recognition accuracy](docs/ACCURACY.md)
+- [Testing](docs/TESTING.md)
 - [Changelog](CHANGELOG.md)
 
 ## License

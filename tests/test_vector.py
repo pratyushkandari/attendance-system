@@ -24,3 +24,9 @@ def test_vectorized_matrix_match_below_threshold():
 def test_vectorized_matrix_match_with_no_enrolled_faces():
     query = np.array([1.0, 0.0, 0.0], dtype=np.float32)
     assert vectorized_matrix_match(query, [], None, threshold=0.79) == (None, -1.0)
+
+
+def test_vectorized_matrix_match_handles_mismatched_dimensions():
+    query = np.array([1.0, 0.0], dtype=np.float32)
+    matrix = np.eye(3, dtype=np.float32)
+    assert vectorized_matrix_match(query, ["a", "b", "c"], matrix, threshold=0.79) == (None, -1.0)
