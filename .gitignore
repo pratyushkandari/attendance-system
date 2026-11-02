@@ -55,6 +55,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 htmlcov/
+test-results/
 
 # Logs
 *.log
