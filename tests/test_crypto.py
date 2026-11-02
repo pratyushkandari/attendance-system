@@ -156,3 +156,33 @@ def test_memory_fallback_sweeps_expired_entries(monkeypatch):
     assert "stale_1" not in _memory_cache and "stale_2" not in _memory_cache
     assert cache.get("live") == "x"
     assert cache.get("new_key") == "v"
+
+
+def test_verify_qr_token_api_rejects_missing_and_tampered_tokens(client):
+    res = client.post("/verify_qr_token", json={})
+    assert res.status_code == 400
+    assert res.get_json()["valid"] is False
+
+    with client.application.app_context():
+        token = get_qr_serializer().dumps({"nonce": "n", "created_at": time.time()})
+    res = client.post("/verify_qr_token", json={"token": token + "x"})
+    assert res.status_code == 400
+    assert res.get_json() == {"valid": False, "error": "Invalid QR code signature."}
+
+
+def test_verify_qr_token_api_enforces_the_30_second_window(client, monkeypatch):
+    with client.application.app_context():
+        token = get_qr_serializer().dumps({"nonce": "n", "created_at": time.time()})
+    issued = time.time()
+
+    monkeypatch.setattr(time, "time", lambda: issued + 29)
+    assert client.post("/verify_qr_token", json={"token": token}).get_json() == {"valid": True}
+
+    monkeypatch.setattr(time, "time", lambda: issued + 31)
+    res = client.post("/verify_qr_token", json={"token": token})
+    assert res.status_code == 400
+    assert res.get_json() == {"valid": False, "error": "QR code expired. Please rescan."}
+
+
+def test_generate_qr_token_requires_an_admin(client):
+    assert client.get("/generate_qr_token").status_code == 401

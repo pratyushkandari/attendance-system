@@ -1,4 +1,11 @@
-from app.routes.main import generate_jwt_token, reset_failed_logins
+import pytest
+
+from app.routes.main import (
+    generate_jwt_token,
+    reset_failed_logins,
+    validate_email_format,
+    validate_password_strength,
+)
 
 
 def test_login_success_returns_jwt(client):
@@ -267,3 +274,99 @@ def test_create_app_refuses_missing_or_published_secret_key():
 
         with pytest.raises(RuntimeError, match="SECRET_KEY"):
             create_app(InsecureConfig)
+
+
+def test_login_rejects_missing_fields_and_malformed_emails(client):
+    res = client.post("/login_admin", json={"email": "admin@test.com"})
+    assert res.status_code == 400
+    assert res.get_json()["status"] == "invalid"
+
+    res = client.post("/login_admin", json={"email": "not-an-email", "password": "Whatever1!"})
+    assert res.status_code == 400
+    assert res.get_json()["status"] == "invalid_email"
+
+
+def test_expired_lockout_is_cleared_at_the_next_login(client):
+    import json
+    import time
+
+    from app.extensions import cache
+    from app.routes.main import _lockout_key
+
+    # A lock that started longer ago than LOCKOUT_DURATION_SECONDS (900 in TestConfig)
+    record = {"count": 3, "locked_at": time.time() - 901}
+    cache.set(_lockout_key("admin@test.com"), json.dumps(record), ex=900)
+    res = client.post("/login_admin", json={"email": "admin@test.com", "password": "password123"})
+    assert res.status_code == 200
+
+
+def test_corrupt_lockout_record_is_treated_as_no_failures(client):
+    from app.extensions import cache
+    from app.routes.main import _lockout_key
+
+    cache.set(_lockout_key("admin@test.com"), "not json", ex=900)
+    res = client.post("/login_admin", json={"email": "admin@test.com", "password": "password123"})
+    assert res.status_code == 200
+
+
+@pytest.mark.parametrize("payload, status", [
+    ({"email": "new@test.com"}, "error"),
+    ({"email": "bad-email", "password": "Str0ng!Pass"}, "invalid_email"),
+    ({"email": "user@" + "d" * 112 + ".com", "password": "Str0ng!Pass"}, "invalid_email"),
+    ({"email": "admin@test.com", "password": "Str0ng!Pass"}, "exists"),
+    ({"email": "jordan@test.com", "password": "Jordan!2026x"}, "weak_password"),
+    ({"email": "new@test.com", "password": "Password123!"}, "weak_password"),
+])
+def test_register_admin_rejects_invalid_requests(authenticated_client, payload, status):
+    res = authenticated_client.post("/register_admin", json=payload)
+    assert res.status_code == 400
+    assert res.get_json()["status"] == status
+
+
+@pytest.mark.parametrize("email", [
+    "",
+    "a" * 250 + "@x.com",       # longer than 254 characters
+    "first..last@test.com",
+    "a@b@test.com",
+    "@test.com",
+    "user@test.c0m",            # the top-level domain must be letters
+    "us#er@test.com",
+])
+def test_validate_email_format_rejects_malformed_addresses(email):
+    ok, message = validate_email_format(email)
+    assert not ok
+    assert message
+
+
+@pytest.mark.parametrize("password", [
+    "",
+    "Aa1!" * 33,                # longer than 128 characters
+    "UPPERCASE1!",
+    "NoDigitsHere!",
+    "Password123!",             # on the common-password list
+])
+def test_validate_password_strength_rejects_weak_passwords(password):
+    ok, message = validate_password_strength(password)
+    assert not ok
+    assert message
+
+
+def test_password_may_not_contain_the_email_username():
+    assert not validate_password_strength("Jordan!2026x", email="jordan@test.com")[0]
+    assert validate_password_strength("Str0ng!Pass", email="jordan@test.com") == (True, "")
+
+
+def test_invalid_bearer_token_is_not_treated_as_admin(client):
+    # /verify_student is public but skips the QR-token check for admins
+    res = client.post("/verify_student", json={"roll": "2026CSE001"},
+                      headers={"Authorization": "Bearer not.a.jwt"})
+    assert res.status_code == 401
+
+
+def test_valid_bearer_token_is_treated_as_admin(client, app):
+    with app.app_context():
+        token = generate_jwt_token("admin@test.com")
+    res = client.post("/verify_student", json={"roll": "2026CSE001"},
+                      headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    assert res.get_json() == {"success": False, "roll": None}
