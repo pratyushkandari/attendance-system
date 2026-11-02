@@ -22,14 +22,16 @@ classifiers = [
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-# End-to-end tests need the Docker Compose stack, so they only run with `make e2e`
-addopts = "-v --tb=short --strict-markers -m 'not e2e'"
+# End-to-end and browser tests need the Docker Compose stack, so they only run with
+# `make e2e` and `make browser`
+addopts = "-v --tb=short --strict-markers -m 'not e2e and not browser'"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
     "e2e: end-to-end tests against the running Docker Compose stack",
+    "browser: Playwright tests against the running Docker Compose stack",
 ]
 
 [tool.coverage.run]

@@ -2,7 +2,7 @@
 # VisionAttend - common development tasks
 # ==============================================================================
 
-.PHONY: help install run test coverage lint e2e accuracy loadtest clean docker-build docker-up docker-down k8s-apply k8s-delete
+.PHONY: help install run test coverage lint e2e browser accuracy loadtest clean docker-build docker-up docker-down k8s-apply k8s-delete
 
 help:
 	@echo "Available commands:"
@@ -12,6 +12,7 @@ help:
 	@echo "  make coverage      Run pytest with terminal code coverage report"
 	@echo "  make lint          Run ruff and bandit"
 	@echo "  make e2e           Run end-to-end tests against the running Docker stack"
+	@echo "  make browser       Run Playwright browser tests against the running Docker stack"
 	@echo "  make accuracy      Measure recognition accuracy on LFW (downloads ~180 MB once)"
 	@echo "  make loadtest      Load-test the kiosk endpoint on the running Docker stack"
 	@echo "  make clean         Remove build, cache, and bytecode artifacts"
@@ -41,6 +42,10 @@ lint:
 
 e2e:
 	pytest -m e2e tests/e2e
+
+browser:
+	python -m playwright install chromium
+	pytest -m browser tests/browser
 
 accuracy:
 	python scripts/evaluate_accuracy.py
